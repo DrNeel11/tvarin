@@ -1,0 +1,29 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+RemoteMemoryServer listening on 127.0.0.1:5990 (latency=10.0ms, bandwidth=1000.0 MB/s)
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:   9%|9         | 27/290 [00:00<00:01, 256.93it/s]Loading weights:  53%|#####3    | 154/290 [00:00<00:00, 834.11it/s]Loading weights:  96%|#########6| 279/290 [00:00<00:00, 1017.58it/s]Loading weights: 100%|##########| 290/290 [00:00<00:00, 919.91it/s] 
+[A] qwen2.5-0.5b-fp16: 24 layers, 18 gpu-resident, 6 remote (loaded in 1.2s, cuda:0)
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:   0%|          | 1/338 [00:00<01:01,  5.49it/s]Loading weights:  12%|#1        | 39/338 [00:00<00:01, 161.70it/s]Loading weights:  23%|##2       | 77/338 [00:00<00:01, 240.49it/s]Loading weights:  34%|###4      | 116/338 [00:00<00:00, 290.42it/s]Loading weights:  47%|####6     | 158/338 [00:00<00:00, 332.88it/s]Loading weights:  58%|#####7    | 195/338 [00:00<00:00, 329.09it/s]Loading weights:  69%|######8   | 233/338 [00:00<00:00, 341.50it/s]Loading weights:  83%|########2 | 279/338 [00:00<00:00, 367.68it/s]Loading weights:  94%|#########3| 317/338 [00:01<00:00, 361.54it/s]Loading weights: 100%|##########| 338/338 [00:01<00:00, 315.83it/s]
+[B] qwen2.5-1.5b-fp16: 28 layers, 20 gpu-resident, 8 remote (loaded in 1.9s, cuda:0)
+
+=== scheme=reactive, schedule=ABABAAAABBBBABAB ===
+
+round  0 [A]: 15.65 tok/s
+round  1 [B]: 10.65 tok/s
+round  2 [A]: 18.40 tok/s
+round  3 [B]: 10.06 tok/s
+round  4 [A]: 19.99 tok/s
+round  5 [A]: 20.88 tok/s
+round  6 [A]: 24.14 tok/s
+round  7 [A]: 21.05 tok/s
+round  8 [B]: 10.19 tok/s
+round  9 [B]: 10.89 tok/s
+round 10 [B]: 10.92 tok/s
+round 11 [B]: 11.20 tok/s
+round 12 [A]: 24.61 tok/s
+round 13 [B]: 11.13 tok/s
+round 14 [A]: 23.91 tok/s
+round 15 [B]: 11.13 tok/s
+
+[shared cache] hits=938 misses=70 hit_rate=0.931 evictions=62 cross_tenant=38
+
+Results saved to D:\ramer\results\20260903_003553_phase10_dynamic_reactive

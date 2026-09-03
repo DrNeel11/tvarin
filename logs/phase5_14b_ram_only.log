@@ -1,0 +1,18 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+CUDA available: True
+Loading weights:   0%|          | 0/579 [00:00<?, ?it/s]Loading weights:   0%|          | 2/579 [00:00<02:22,  4.05it/s]Loading weights:   2%|1         | 10/579 [00:00<00:27, 21.01it/s]Loading weights:   3%|2         | 16/579 [00:00<00:18, 30.21it/s]Loading weights:   5%|4         | 28/579 [00:00<00:10, 50.44it/s]Loading weights:   6%|6         | 36/579 [00:00<00:09, 55.44it/s]Loading weights:   7%|7         | 43/579 [00:01<00:09, 54.96it/s]Loading weights:   9%|8         | 52/579 [00:01<00:09, 55.18it/s]Loading weights:  11%|#1        | 65/579 [00:01<00:07, 69.48it/s]Loading weights:  13%|#3        | 76/579 [00:01<00:06, 75.49it/s]Loading weights:  15%|#4        | 85/579 [00:01<00:06, 75.51it/s]Loading weights: 100%|##########| 579/579 [00:01<00:00, 359.79it/s]
+Some parameters are on the meta device because they were offloaded to the cpu.
+loaded qwen2.5-14b-fp16-tiered in 2.9s (0,cpu)
+model has 48 layers: accelerate placed 7 on GPU, 41 on CPU -- of those, 0 redirected to remote, 41 stay as always-resident RAM
+Traceback (most recent call last):
+  File "D:\ramer\scripts\run_tiered.py", line 221, in <module>
+    main()
+  File "D:\ramer\scripts\run_tiered.py", line 146, in main
+    manager = LayerTierManager(
+              ^^^^^^^^^^^^^^^^^
+  File "D:\ramer\src\memtier\tiered\tier_manager.py", line 113, in __init__
+    self._offload_to_home(idx, layer, home)
+  File "D:\ramer\src\memtier\tiered\tier_manager.py", line 118, in _offload_to_home
+    name: p.detach().to("cpu").clone() for name, p in layer.named_parameters()
+          ^^^^^^^^^^^^^^^^^^^^
+NotImplementedError: Cannot copy out of meta tensor; no data!

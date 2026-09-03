@@ -1,0 +1,16 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+CUDA available: True
+Loading weights:   0%|          | 0/148 [00:00<?, ?it/s]Loading weights: 100%|##########| 148/148 [00:00<00:00, 2308.75it/s]
+loaded pythia-160m-fp16 in 1.2s (cuda:0)
+decoder layers found at 'gpt_neox.layers' (GPTNeoXForCausalLM)
+model has 12 layers: 9 resident on GPU, 3 on remote
+RemoteMemoryServer listening on 127.0.0.1:5970 (latency=10.0ms, bandwidth=1000.0 MB/s)
+VRAM: 0.32GB (all-resident) -> 0.28GB (after offloading 3 layers)
+[short] median decode=85.25tok/s ttft=0.017s
+Traceback (most recent call last):
+  File "D:\ramer\scripts\run_tiered.py", line 250, in <module>
+    main()
+  File "D:\ramer\scripts\run_tiered.py", line 203, in main
+    print(f"[{prompt_name}] median decode={median_decode:.2f}tok/s ttft={median_ttft:.3f}s")
+                                          ^^^^^^^^^^^^^^^^^^^
+TypeError: unsupported format string passed to NoneType.__format__

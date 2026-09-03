@@ -1,0 +1,25 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+D:\ramer\.venv\Lib\site-packages\huggingface_hub\file_download.py:141: UserWarning: `huggingface_hub` cache-system uses symlinks by default to efficiently store duplicated files but your machine does not support them in D:\ramer\.hf_cache\hub\models--EleutherAI--pythia-160m. Caching files will still work but in a degraded version that might require more space on your disk. This warning can be disabled by setting the `HF_HUB_DISABLE_SYMLINKS_WARNING` environment variable. For more details, see https://huggingface.co/docs/huggingface_hub/how-to-cache#limitations.
+To support symlinks on Windows, you either need to activate Developer Mode or to run Python as an administrator. In order to activate developer mode, see this article: https://docs.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development
+  warnings.warn(message)
+CUDA available: True
+Loading weights:   0%|          | 0/148 [00:00<?, ?it/s]Loading weights: 100%|##########| 148/148 [00:00<00:00, 2531.46it/s]
+loaded pythia-160m-fp16 in 1.2s (cuda:0)
+decoder layers found at 'gpt_neox.layers' (GPTNeoXForCausalLM)
+model has 12 layers: 9 resident on GPU, 3 on remote
+RemoteMemoryServer listening on 127.0.0.1:5970 (latency=10.0ms, bandwidth=1000.0 MB/s)
+VRAM: 0.32GB (all-resident) -> 0.28GB (after offloading 3 layers)
+Traceback (most recent call last):
+  File "D:\ramer\scripts\run_tiered.py", line 250, in <module>
+    main()
+  File "D:\ramer\scripts\run_tiered.py", line 192, in main
+    run_one_prompt(model, tokenizer, prompt_name, prompt_text, batch_size=args.batch_size)
+  File "D:\ramer\src\memtier\benchmark\harness.py", line 129, in run_one_prompt
+    input_text = tokenizer.apply_chat_template(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\.venv\Lib\site-packages\transformers\tokenization_utils_base.py", line 3085, in apply_chat_template
+    chat_template = self.get_chat_template(chat_template, tools)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\.venv\Lib\site-packages\transformers\tokenization_utils_base.py", line 3270, in get_chat_template
+    raise ValueError(
+ValueError: Cannot use chat template functions because tokenizer.chat_template is not set and no template argument was passed! For information about writing templates and setting the tokenizer.chat_template attribute, please see the documentation at https://huggingface.co/docs/transformers/main/en/chat_templating

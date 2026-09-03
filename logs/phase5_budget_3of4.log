@@ -1,0 +1,15 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+CUDA available: True
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:   0%|          | 1/338 [00:00<01:04,  5.23it/s]Loading weights:  10%|9         | 33/338 [00:00<00:02, 139.07it/s]Loading weights:  19%|#9        | 65/338 [00:00<00:01, 200.91it/s]Loading weights:  30%|##9       | 101/338 [00:00<00:00, 249.15it/s]Loading weights:  40%|####      | 136/338 [00:00<00:00, 276.55it/s]Loading weights:  51%|#####1    | 173/338 [00:00<00:00, 301.81it/s]Loading weights:  62%|######1   | 209/338 [00:00<00:00, 311.87it/s]Loading weights:  72%|#######2  | 245/338 [00:00<00:00, 321.68it/s]Loading weights:  83%|########3 | 281/338 [00:01<00:00, 323.57it/s]Loading weights:  93%|#########3| 316/338 [00:01<00:00, 326.29it/s]Loading weights: 100%|##########| 338/338 [00:01<00:00, 285.45it/s]
+loaded qwen2.5-1.5b-fp16 in 2.4s (cuda:0)
+model has 28 layers: 24 resident on GPU, 4 on remote
+RemoteMemoryServer listening on 127.0.0.1:5970 (latency=10.0ms, bandwidth=1000.0 MB/s)
+VRAM: 3.09GB (all-resident) -> 2.71GB (after offloading 4 layers)
+[short] median decode=1.59tok/s ttft=0.654s
+[medium] median decode=1.63tok/s ttft=0.633s
+[long] median decode=1.62tok/s ttft=0.619s
+
+3060 layer fetches, avg wall time per fetch: 146.30ms, avg blocked-wait per fetch: 137.82ms
+RAM cache hits: 0/3060 fetches (0.0%)
+
+Results saved to D:\ramer\results\20260902_173555_phase5_budget_3of4

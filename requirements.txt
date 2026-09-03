@@ -1,0 +1,8 @@
+transformers>=4.46
+accelerate>=1.0
+bitsandbytes>=0.44
+safetensors>=0.4
+sentencepiece
+psutil
+nvidia-ml-py
+huggingface_hub

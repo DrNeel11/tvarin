@@ -1,0 +1,30 @@
+[
+  {
+    "label": "qwen2.5-14b-nf4",
+    "repo_id": "Qwen/Qwen2.5-14B-Instruct",
+    "quant": "nf4",
+    "param_count_b": 14.0,
+    "prompt_name": "<load>",
+    "status": "error",
+    "error_message": "Some modules are dispatched on the CPU or the disk. Make sure you have enough GPU RAM to fit the quantized model. If you want to dispatch the model on the CPU or the disk while keeping these modules in 32-bit, you need to set `llm_int8_enable_fp32_cpu_offload=True` and pass a custom `device_map` to `from_pretrained`. Check https://huggingface.co/docs/transformers/main/en/main_classes/quantization#offload-between-cpu-and-gpu for more details. ",
+    "device_map_summary": null,
+    "load_time_s": null,
+    "n_reps": null,
+    "n_warmup": null,
+    "prompt_tokens": null,
+    "prompt_processing_s": null,
+    "prompt_tokens_per_s": null,
+    "max_new_tokens": null,
+    "generated_tokens": null,
+    "ttft_s": null,
+    "decode_time_s": null,
+    "decode_tokens_per_s": null,
+    "total_generate_s": null,
+    "overall_tokens_per_s": null,
+    "peak_vram_bytes": null,
+    "peak_ram_bytes": null,
+    "avg_gpu_util_pct": null,
+    "max_gpu_util_pct": null,
+    "avg_cpu_percent": null
+  }
+]

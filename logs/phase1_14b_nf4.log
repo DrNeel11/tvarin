@@ -1,0 +1,13 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+W0902 16:07:11.913000 26488 Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+CUDA available: True
+GPU: NVIDIA GeForce RTX 5060
+Compute capability: (12, 0)
+[qwen2.5-14b-nf4] loading...
+[qwen2.5-14b-nf4] error during load: Some modules are dispatched on the CPU or the disk. Make sure you have enough GPU RAM to fit the quantized model. If you want to dispatch the model on the CPU or the disk while keeping these modules in 32-bit, you need to set `llm_int8_enable_fp32_cpu_offload=True` and pass a custom `device_map` to `from_pretrained`. Check https://huggingface.co/docs/transformers/main/en/main_classes/quantization#offload-between-cpu-and-gpu for more details. 
+
+Results saved to D:\ramer\results\20260902_160716_phase1_14b_nf4
+
+label               prompt  status    ttft_s  decode_tok/s prefill_tok/s   vram_GB    ram_GB
+--------------------------------------------------------------------------------------------
+qwen2.5-14b-nf4     <load>  error          -             -             -      0.00      0.00

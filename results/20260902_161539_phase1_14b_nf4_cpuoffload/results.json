@@ -1,0 +1,30 @@
+[
+  {
+    "label": "qwen2.5-14b-nf4-cpuoffload",
+    "repo_id": "Qwen/Qwen2.5-14B-Instruct",
+    "quant": "nf4_cpu_offload",
+    "param_count_b": 14.0,
+    "prompt_name": "<load>",
+    "status": "error",
+    "error_message": "Tensor.item() cannot be called on meta tensors",
+    "device_map_summary": null,
+    "load_time_s": null,
+    "n_reps": null,
+    "n_warmup": null,
+    "prompt_tokens": null,
+    "prompt_processing_s": null,
+    "prompt_tokens_per_s": null,
+    "max_new_tokens": null,
+    "generated_tokens": null,
+    "ttft_s": null,
+    "decode_time_s": null,
+    "decode_tokens_per_s": null,
+    "total_generate_s": null,
+    "overall_tokens_per_s": null,
+    "peak_vram_bytes": null,
+    "peak_ram_bytes": null,
+    "avg_gpu_util_pct": null,
+    "max_gpu_util_pct": null,
+    "avg_cpu_percent": null
+  }
+]

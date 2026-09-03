@@ -1,0 +1,11 @@
+{
+  "scheme": "shared",
+  "latency_ms": 10.0,
+  "bandwidth_mb_per_s": 1000.0,
+  "overflow_a": 6,
+  "overflow_b": 8,
+  "total_budget_mb": 750.0,
+  "tag": "phase8_multi_tenant",
+  "n_layers_a": 24,
+  "n_layers_b": 28
+}

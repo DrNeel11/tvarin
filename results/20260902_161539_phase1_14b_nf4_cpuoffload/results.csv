@@ -1,0 +1,2 @@
+label,repo_id,quant,param_count_b,prompt_name,status,error_message,device_map_summary,load_time_s,n_reps,n_warmup,prompt_tokens,prompt_processing_s,prompt_tokens_per_s,max_new_tokens,generated_tokens,ttft_s,decode_time_s,decode_tokens_per_s,total_generate_s,overall_tokens_per_s,peak_vram_bytes,peak_ram_bytes,avg_gpu_util_pct,max_gpu_util_pct,avg_cpu_percent
+qwen2.5-14b-nf4-cpuoffload,Qwen/Qwen2.5-14B-Instruct,nf4_cpu_offload,14.0,<load>,error,Tensor.item() cannot be called on meta tensors,,,,,,,,,,,,,,,,,,,

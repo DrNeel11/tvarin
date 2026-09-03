@@ -1,0 +1,27 @@
+CUDA available: True
+Loading weights:   0%|          | 0/579 [00:00<?, ?it/s]Loading weights:   0%|          | 2/579 [00:00<02:13,  4.32it/s]Loading weights:   1%|1         | 6/579 [00:00<00:48, 11.90it/s]Loading weights:   3%|2         | 16/579 [00:00<00:18, 30.64it/s]Loading weights:   5%|4         | 27/579 [00:00<00:13, 42.25it/s]Loading weights:   7%|6         | 40/579 [00:01<00:10, 53.46it/s]Loading weights:   9%|8         | 52/579 [00:01<00:08, 64.18it/s]Loading weights:  10%|#         | 60/579 [00:01<00:08, 64.28it/s]Loading weights:  12%|#1        | 67/579 [00:01<00:08, 60.77it/s]Loading weights:  13%|#3        | 77/579 [00:01<00:07, 65.87it/s]Loading weights:  58%|#####8    | 338/579 [00:01<00:00, 679.24it/s]Loading weights: 100%|##########| 579/579 [00:01<00:00, 342.25it/s]
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Some parameters are on the meta device because they were offloaded to the cpu.
+loaded qwen2.5-14b-fp16-tiered in 3.0s (0,cpu)
+model has 48 layers: accelerate placed 7 on GPU, 41 on CPU -- of those, 0 redirected to remote, 41 stay as always-resident RAM
+reading CPU-tier layer weights directly from the checkpoint (bypassing accelerate's offload representation)...
+Traceback (most recent call last):
+  File "D:\ramer\scripts\run_tiered.py", line 239, in <module>
+    main()
+  File "D:\ramer\scripts\run_tiered.py", line 127, in main
+    reader = SafetensorsMultiReader(cfg.repo_id)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\src\memtier\tiered\safetensors_reader.py", line 27, in __init__
+    self.snapshot_dir = resolve_snapshot_dir(repo_id)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\src\memtier\tiered\safetensors_reader.py", line 22, in resolve_snapshot_dir
+    return Path(snapshot_download(repo_id, local_files_only=True))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\.venv\Lib\site-packages\huggingface_hub\utils\_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\.venv\Lib\site-packages\huggingface_hub\_snapshot_download.py", line 321, in snapshot_download
+    _raise_if_incomplete_snapshot(
+  File "D:\ramer\.venv\Lib\site-packages\huggingface_hub\_snapshot_download.py", line 576, in _raise_if_incomplete_snapshot
+    raise IncompleteSnapshotError(
+huggingface_hub.errors.IncompleteSnapshotError: The cached snapshot for 'Qwen/Qwen2.5-14B-Instruct' (revision 'main', commit cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8) is incomplete: 3 file(s) are missing (.gitattributes, LICENSE, README.md). Outgoing traffic is disabled ('local_files_only=True'). Re-run the download with network access to complete the snapshot.

@@ -1,0 +1,15 @@
+{
+  "model_label": "qwen2.5-1.5b-fp16",
+  "overflow_layers": 4,
+  "overflow_tier": "remote",
+  "latency_ms": 10.0,
+  "bandwidth_mb_per_s": 1000.0,
+  "n_reps": 2,
+  "n_warmup": 1,
+  "prefetch": true,
+  "tag": "phase4_prefetch_test",
+  "n_layers": 28,
+  "n_gpu_resident": 24,
+  "vram_before_gb": 3.087429632,
+  "vram_after_gb": 2.71304704
+}

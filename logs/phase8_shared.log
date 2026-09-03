@@ -1,0 +1,19 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+RemoteMemoryServer listening on 127.0.0.1:5980 (latency=10.0ms, bandwidth=1000.0 MB/s)
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:   6%|5         | 16/290 [00:00<00:01, 158.13it/s]Loading weights:  39%|###8      | 113/290 [00:00<00:00, 631.29it/s]Loading weights:  75%|#######5  | 218/290 [00:00<00:00, 817.32it/s]Loading weights: 100%|##########| 290/290 [00:00<00:00, 782.60it/s]
+[tenantA] qwen2.5-0.5b-fp16: 24 layers, 18 gpu-resident, 6 remote (loaded in 1.5s, cuda:0)
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:   0%|          | 1/338 [00:00<01:11,  4.74it/s]Loading weights:   9%|8         | 29/338 [00:00<00:02, 113.25it/s]Loading weights:  19%|#8        | 63/338 [00:00<00:01, 190.29it/s]Loading weights:  28%|##7       | 93/338 [00:00<00:01, 225.85it/s]Loading weights:  37%|###6      | 124/338 [00:00<00:00, 247.16it/s]Loading weights:  47%|####7     | 159/338 [00:00<00:00, 274.49it/s]Loading weights:  58%|#####7    | 195/338 [00:00<00:00, 283.16it/s]Loading weights:  69%|######8   | 232/338 [00:00<00:00, 298.80it/s]Loading weights:  79%|#######8  | 267/338 [00:01<00:00, 310.61it/s]Loading weights:  88%|########8 | 299/338 [00:01<00:00, 312.62it/s]Loading weights:  98%|#########7| 331/338 [00:01<00:00, 308.17it/s]Loading weights: 100%|##########| 338/338 [00:01<00:00, 263.09it/s]
+[tenantB] qwen2.5-1.5b-fp16: 28 layers, 20 gpu-resident, 8 remote (loaded in 2.4s, cuda:0)
+
+=== scheme=shared, total_budget=750.0MB, interleaving 6 rounds of (A, B) ===
+
+round 0: A=15.72tok/s  B=9.06tok/s
+round 1: A=16.94tok/s  B=9.61tok/s
+round 2: A=18.47tok/s  B=9.31tok/s
+round 3: A=18.98tok/s  B=8.58tok/s
+round 4: A=19.16tok/s  B=8.71tok/s
+round 5: A=18.80tok/s  B=9.48tok/s
+
+[shared] hits=672 misses=84 hit_rate=0.889 evictions=76 cross_tenant_evictions=46
+
+Results saved to D:\ramer\results\20260902_225117_phase8_multi_tenant_shared

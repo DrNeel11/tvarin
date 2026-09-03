@@ -1,0 +1,8 @@
+{
+  "hits": 928,
+  "misses": 94,
+  "hit_rate": 0.9080234833659491,
+  "evictions": 86,
+  "cross_tenant_evictions": 46,
+  "prefetches_triggered": 6
+}

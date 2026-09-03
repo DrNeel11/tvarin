@@ -1,0 +1,93 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+RemoteMemoryServer listening on 127.0.0.1:5990 (latency=10.0ms, bandwidth=1000.0 MB/s)
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:  10%|#         | 29/290 [00:00<00:00, 287.62it/s]Loading weights:  53%|#####2    | 153/290 [00:00<00:00, 845.16it/s]Loading weights:  96%|#########6| 279/290 [00:00<00:00, 1028.64it/s]Loading weights: 100%|##########| 290/290 [00:00<00:00, 937.14it/s] 
+[A] qwen2.5-0.5b-fp16: 24 layers, 18 gpu-resident, 6 remote (loaded in 1.3s, cuda:0)
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:   0%|          | 1/338 [00:00<01:01,  5.44it/s]Loading weights:  12%|#1        | 39/338 [00:00<00:01, 168.04it/s]Loading weights:  22%|##2       | 76/338 [00:00<00:01, 242.23it/s]Loading weights:  33%|###3      | 113/338 [00:00<00:00, 284.31it/s]Loading weights:  47%|####7     | 159/338 [00:00<00:00, 336.21it/s]Loading weights:  58%|#####7    | 195/338 [00:00<00:00, 343.10it/s]Loading weights:  69%|######8   | 233/338 [00:00<00:00, 351.42it/s]Loading weights:  83%|########2 | 279/338 [00:00<00:00, 367.13it/s]Loading weights:  94%|#########3| 317/338 [00:01<00:00, 369.83it/s]Loading weights: 100%|##########| 338/338 [00:01<00:00, 321.04it/s]
+Exception in thread Thread-11 (_worker):
+Traceback (most recent call last):
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\ramer\src\memtier\tiered\tier_manager.py", line 178, in _worker
+    self._fetch_one(idx, self.prefetch_remote_client)
+  File "D:\ramer\src\memtier\tiered\tier_manager.py", line 226, in _fetch_one
+    r = client.get(f"{self.run_id}/layer_{idx}")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\src\memtier\remote\client.py", line 68, in get
+    return TransferResult(found=True, size_bytes=len(payload), total_s=total_s, payload=payload)
+                                                 ^^^^^^^^^^^^
+TypeError: object of type 'NoneType' has no len()
+Exception in thread Thread-12 (_worker):
+Traceback (most recent call last):
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\ramer\src\memtier\tiered\tier_manager.py", line 178, in _worker
+    self._fetch_one(idx, self.prefetch_remote_client)
+  File "D:\ramer\src\memtier\tiered\tier_manager.py", line 229, in _fetch_one
+    state = deserialize_layer(r.payload)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\src\memtier\tiered\layer_store.py", line 26, in deserialize_layer
+    return torch.load(buf, map_location="cpu", weights_only=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\.venv\Lib\site-packages\torch\serialization.py", line 1537, in load
+    with _open_zipfile_reader(opened_file) as opened_zipfile:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\.venv\Lib\site-packages\torch\serialization.py", line 807, in __init__
+    super().__init__(torch._C.PyTorchFileReader(name_or_buffer))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: PytorchStreamReader failed reading zip archive: invalid header or archive is corrupted. This is an internal miniz error. If you are seeing this error, there is a high likelihood that your checkpoint file is corrupted. This can happen if the checkpoint was not saved properly, was transferred incorrectly, or the file was modified after saving.
+Exception in thread Thread-13 (_worker):
+Traceback (most recent call last):
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\ramer\src\memtier\tiered\tier_manager.py", line 178, in _worker
+    self._fetch_one(idx, self.prefetch_remote_client)
+  File "D:\ramer\src\memtier\tiered\tier_manager.py", line 226, in _fetch_one
+    r = client.get(f"{self.run_id}/layer_{idx}")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ramer\src\memtier\remote\client.py", line 68, in get
+    return TransferResult(found=True, size_bytes=len(payload), total_s=total_s, payload=payload)
+                                                 ^^^^^^^^^^^^
+TypeError: object of type 'NoneType' has no len()
+Exception in thread Thread-5 (_handle_client):
+Traceback (most recent call last):
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+    self.run()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+    self._target(*self._args, **self._kwargs)
+  File "D:\ramer\src\memtier\remote\server.py", line 82, in _handle_client
+[B] qwen2.5-1.5b-fp16: 28 layers, 20 gpu-resident, 8 remote (loaded in 1.9s, cuda:0)
+
+=== scheme=naive, schedule=ABABAAAABBBBABAB ===
+
+round  0 [A]: 14.86 tok/s
+round  1 [B]: 9.13 tok/s
+round  2 [A]: 20.80 tok/s
+round  3 [B]: 10.54 tok/s
+round  4 [A]: 18.87 tok/s
+round  5 [A]: 14.40 tok/s
+round  6 [A]: 22.20 tok/s
+round  7 [A]: 21.78 tok/s
+round  8 [B]: 11.01 tok/s
+round  9 [B]: 10.03 tok/s
+round 10 [B]: 11.00 tok/s
+round 11 [B]: 11.02 tok/s
+round 12 [A]: 24.60 tok/s
+round 13 [B]: 10.96 tok/s
+round 14 [A]: 24.16 tok/s
+round 15 [B]: 11.24 tok/s
+
+[shared cache] hits=915 misses=126 hit_rate=0.879 evictions=115 cross_tenant=62
+
+Results saved to D:\ramer\results\20260903_003639_phase10_dynamic_naive
+    protocol.send_resp_ok(conn, value, chunked_sender=self._sender)
+  File "D:\ramer\src\memtier\remote\protocol.py", line 81, in send_resp_ok
+    chunked_sender(sock, payload)
+  File "D:\ramer\src\memtier\remote\throttle.py", line 37, in _throttled
+    sock.sendall(payload[sent:end])
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host

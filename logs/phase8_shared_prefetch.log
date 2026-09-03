@@ -1,0 +1,19 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+RemoteMemoryServer listening on 127.0.0.1:5980 (latency=10.0ms, bandwidth=1000.0 MB/s)
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:   9%|9         | 27/290 [00:00<00:00, 265.54it/s]Loading weights:  50%|#####     | 145/290 [00:00<00:00, 798.56it/s]Loading weights:  91%|######### | 263/290 [00:00<00:00, 971.26it/s]Loading weights: 100%|##########| 290/290 [00:00<00:00, 901.69it/s]
+[tenantA] qwen2.5-0.5b-fp16: 24 layers, 18 gpu-resident, 6 remote (loaded in 1.3s, cuda:0)
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:   0%|          | 1/338 [00:00<01:01,  5.47it/s]Loading weights:  11%|#1        | 38/338 [00:00<00:01, 162.85it/s]Loading weights:  22%|##2       | 76/338 [00:00<00:01, 242.31it/s]Loading weights:  33%|###3      | 113/338 [00:00<00:00, 283.35it/s]Loading weights:  47%|####7     | 159/338 [00:00<00:00, 334.51it/s]Loading weights:  58%|#####7    | 196/338 [00:00<00:00, 341.12it/s]Loading weights:  69%|######8   | 233/338 [00:00<00:00, 346.43it/s]Loading weights:  83%|########2 | 279/338 [00:00<00:00, 373.38it/s]Loading weights:  94%|#########4| 318/338 [00:01<00:00, 364.90it/s]Loading weights: 100%|##########| 338/338 [00:01<00:00, 318.16it/s]
+[tenantB] qwen2.5-1.5b-fp16: 28 layers, 20 gpu-resident, 8 remote (loaded in 1.9s, cuda:0)
+
+=== scheme=shared_prefetch, total_budget=750.0MB, interleaving 6 rounds of (A, B) ===
+
+round 0: A=14.46tok/s  B=9.28tok/s
+round 1: A=20.26tok/s  B=10.14tok/s
+round 2: A=21.47tok/s  B=10.17tok/s
+round 3: A=20.02tok/s  B=10.30tok/s
+round 4: A=21.39tok/s  B=11.17tok/s
+round 5: A=21.93tok/s  B=10.66tok/s
+
+[shared] hits=672 misses=92 hit_rate=0.880 evictions=84 cross_tenant_evictions=46
+
+Results saved to D:\ramer\results\20260903_002019_phase8_multi_tenant_shared_prefetch

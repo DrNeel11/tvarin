@@ -1,0 +1,20 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+RemoteMemoryServer listening on 127.0.0.1:5980 (latency=10.0ms, bandwidth=1000.0 MB/s)
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:   7%|6         | 19/290 [00:00<00:01, 189.79it/s]Loading weights:  43%|####2     | 124/290 [00:00<00:00, 682.35it/s]Loading weights:  77%|#######6  | 223/290 [00:00<00:00, 820.67it/s]Loading weights: 100%|##########| 290/290 [00:00<00:00, 813.01it/s]
+[tenantA] qwen2.5-0.5b-fp16: 24 layers, 18 gpu-resident, 6 remote (loaded in 1.5s, cuda:0)
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:   0%|          | 1/338 [00:00<01:12,  4.67it/s]Loading weights:   9%|8         | 29/338 [00:00<00:02, 111.31it/s]Loading weights:  19%|#8        | 63/338 [00:00<00:01, 189.46it/s]Loading weights:  29%|##8       | 98/338 [00:00<00:00, 241.44it/s]Loading weights:  37%|###7      | 126/338 [00:00<00:00, 250.74it/s]Loading weights:  47%|####7     | 159/338 [00:00<00:00, 269.57it/s]Loading weights:  56%|#####5    | 189/338 [00:00<00:00, 278.65it/s]Loading weights:  65%|######5   | 220/338 [00:00<00:00, 284.65it/s]Loading weights:  75%|#######4  | 253/338 [00:01<00:00, 293.09it/s]Loading weights:  84%|########3 | 283/338 [00:01<00:00, 293.86it/s]Loading weights:  93%|#########3| 316/338 [00:01<00:00, 299.16it/s]Loading weights: 100%|##########| 338/338 [00:01<00:00, 256.96it/s]
+[tenantB] qwen2.5-1.5b-fp16: 28 layers, 20 gpu-resident, 8 remote (loaded in 2.4s, cuda:0)
+
+=== scheme=partitioned, total_budget=750.0MB, interleaving 6 rounds of (A, B) ===
+
+round 0: A=13.24tok/s  B=0.77tok/s
+round 1: A=17.68tok/s  B=0.78tok/s
+round 2: A=16.48tok/s  B=0.80tok/s
+round 3: A=18.75tok/s  B=0.80tok/s
+round 4: A=18.00tok/s  B=0.81tok/s
+round 5: A=17.61tok/s  B=0.80tok/s
+
+[tenantA] hits=318 misses=6 hit_rate=0.981 evictions=0 cross_tenant_evictions=0
+[tenantB] hits=0 misses=432 hit_rate=0.000 evictions=428 cross_tenant_evictions=0
+
+Results saved to D:\ramer\results\20260902_225030_phase8_multi_tenant_partitioned

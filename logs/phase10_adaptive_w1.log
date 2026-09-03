@@ -1,0 +1,29 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+RemoteMemoryServer listening on 127.0.0.1:5990 (latency=10.0ms, bandwidth=1000.0 MB/s)
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:   9%|9         | 27/290 [00:00<00:00, 263.64it/s]Loading weights:  51%|#####1    | 148/290 [00:00<00:00, 811.91it/s]Loading weights:  93%|#########2| 269/290 [00:00<00:00, 991.00it/s]Loading weights: 100%|##########| 290/290 [00:00<00:00, 919.65it/s]
+[A] qwen2.5-0.5b-fp16: 24 layers, 18 gpu-resident, 6 remote (loaded in 1.3s, cuda:0)
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:   0%|          | 1/338 [00:00<01:00,  5.55it/s]Loading weights:  12%|#1        | 39/338 [00:00<00:01, 170.46it/s]Loading weights:  22%|##1       | 74/338 [00:00<00:01, 236.34it/s]Loading weights:  33%|###3      | 113/338 [00:00<00:00, 286.23it/s]Loading weights:  47%|####7     | 159/338 [00:00<00:00, 335.96it/s]Loading weights:  58%|#####7    | 196/338 [00:00<00:00, 346.46it/s]Loading weights:  69%|######8   | 233/338 [00:00<00:00, 353.39it/s]Loading weights:  83%|########2 | 279/338 [00:00<00:00, 379.95it/s]Loading weights:  94%|#########4| 318/338 [00:01<00:00, 366.59it/s]Loading weights: 100%|##########| 338/338 [00:01<00:00, 321.34it/s]
+[B] qwen2.5-1.5b-fp16: 28 layers, 20 gpu-resident, 8 remote (loaded in 1.9s, cuda:0)
+
+=== scheme=adaptive, schedule=ABABAAAABBBBABAB ===
+
+round  0 [A]: 15.23 tok/s
+round  1 [B]: 9.39 tok/s
+round  2 [A]: 17.69 tok/s
+round  3 [B]: 10.53 tok/s
+round  4 [A]: 21.90 tok/s
+round  5 [A]: 16.39 tok/s
+round  6 [A]: 15.21 tok/s
+round  7 [A]: 21.36 tok/s
+round  8 [B]: 10.19 tok/s
+round  9 [B]: 10.17 tok/s
+round 10 [B]: 11.27 tok/s
+round 11 [B]: 11.35 tok/s
+round 12 [A]: 22.56 tok/s
+round 13 [B]: 10.75 tok/s
+round 14 [A]: 20.26 tok/s
+round 15 [B]: 11.14 tok/s
+
+[shared cache] hits=929 misses=101 hit_rate=0.902 evictions=93 cross_tenant=46
+
+Results saved to D:\ramer\results\20260903_003940_phase10_dynamic_w1_adaptive

@@ -1,0 +1,29 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+RemoteMemoryServer listening on 127.0.0.1:5990 (latency=10.0ms, bandwidth=1000.0 MB/s)
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:  13%|#3        | 39/290 [00:00<00:00, 365.60it/s]Loading weights:  56%|#####5    | 161/290 [00:00<00:00, 847.76it/s]Loading weights:  97%|#########6| 280/290 [00:00<00:00, 980.22it/s]Loading weights: 100%|##########| 290/290 [00:00<00:00, 923.99it/s]
+[A] qwen2.5-0.5b-fp16: 24 layers, 18 gpu-resident, 6 remote (loaded in 1.4s, cuda:0)
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:   0%|          | 1/338 [00:00<00:59,  5.66it/s]Loading weights:  12%|#1        | 39/338 [00:00<00:01, 170.67it/s]Loading weights:  22%|##2       | 75/338 [00:00<00:01, 233.72it/s]Loading weights:  35%|###4      | 117/338 [00:00<00:00, 296.35it/s]Loading weights:  47%|####7     | 160/338 [00:00<00:00, 330.59it/s]Loading weights:  58%|#####8    | 197/338 [00:00<00:00, 340.08it/s]Loading weights:  72%|#######1  | 243/338 [00:00<00:00, 367.50it/s]Loading weights:  86%|########6 | 291/338 [00:00<00:00, 393.89it/s]Loading weights:  98%|#########8| 332/338 [00:01<00:00, 387.73it/s]Loading weights: 100%|##########| 338/338 [00:01<00:00, 328.13it/s]
+[B] qwen2.5-1.5b-fp16: 28 layers, 20 gpu-resident, 8 remote (loaded in 1.9s, cuda:0)
+
+=== scheme=confident, schedule=ABABAAAABBBBABAB ===
+
+round  0 [A]: 17.89 tok/s
+round  1 [B]: 9.76 tok/s
+round  2 [A]: 21.21 tok/s
+round  3 [B]: 10.27 tok/s
+round  4 [A]: 21.20 tok/s
+round  5 [A]: 12.76 tok/s
+round  6 [A]: 12.01 tok/s
+round  7 [A]: 22.05 tok/s
+round  8 [B]: 9.34 tok/s
+round  9 [B]: 10.64 tok/s
+round 10 [B]: 10.35 tok/s
+round 11 [B]: 10.77 tok/s
+round 12 [A]: 22.11 tok/s
+round 13 [B]: 10.30 tok/s
+round 14 [A]: 21.58 tok/s
+round 15 [B]: 10.50 tok/s
+
+[shared cache] hits=928 misses=94 hit_rate=0.908 evictions=86 cross_tenant=46 prefetches_triggered=6/16
+
+Results saved to D:\ramer\results\20260903_191625_phase10_confident_retry_confident

@@ -1,0 +1,15 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "cpu": "AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD",
+  "cpu_cores_physical": 6,
+  "cpu_cores_logical": 12,
+  "ram_total_bytes": 33462595584,
+  "torch_version": "2.11.0+cu128",
+  "cuda_available": true,
+  "gpu_name": "NVIDIA GeForce RTX 5060",
+  "gpu_vram_total_bytes": 8546484224,
+  "gpu_compute_capability": [
+    12,
+    0
+  ]
+}

@@ -1,0 +1,21 @@
+label,param_count_b,quant,device_map,status,prompt,ttft_s,decode_tokens_per_s,prompt_tokens_per_s,peak_vram_gb,peak_ram_gb,n_reps,note
+qwen2.5-0.5b-fp16,0.5,bf16,cuda:0,ok,short,0.032,29.5,615.5,1.01,~1.9,5,
+qwen2.5-0.5b-fp16,0.5,bf16,cuda:0,ok,medium,0.037,39.6,4251.5,1.03,~1.9,5,
+qwen2.5-0.5b-fp16,0.5,bf16,cuda:0,ok,long,0.027,36.3,4204.9,1.03,~1.9,5,
+qwen2.5-1.5b-fp16,1.5,bf16,cuda:0,ok,short,0.033,33.0,1117.5,3.11,~2.1,5,
+qwen2.5-1.5b-fp16,1.5,bf16,cuda:0,ok,medium,0.035,30.6,2904.1,3.14,~2.1,5,
+qwen2.5-1.5b-fp16,1.5,bf16,cuda:0,ok,long,0.037,32.1,2867.3,3.13,~2.1,5,
+qwen2.5-3b-fp16,3.0,bf16,cuda:0,ok,short,0.044,25.6,844.3,6.19,~2.3,5,
+qwen2.5-3b-fp16,3.0,bf16,cuda:0,ok,medium,0.048,24.4,2444.5,6.22,~2.3,5,
+qwen2.5-3b-fp16,3.0,bf16,cuda:0,ok,long,0.048,23.7,2332.3,6.22,~2.3,5,
+qwen2.5-7b-fp16,7.0,bf16,"0,cpu",ok,short,0.922,1.1,39.9,7.33,~13,5,partial CPU offload (exceeds 7GiB VRAM cap)
+qwen2.5-7b-fp16,7.0,bf16,"0,cpu",ok,medium,0.999,1.1,118.3,7.36,~13,5,partial CPU offload (exceeds 7GiB VRAM cap)
+qwen2.5-7b-fp16,7.0,bf16,"0,cpu",ok,long,0.974,1.1,113.3,7.36,~13,5,partial CPU offload (exceeds 7GiB VRAM cap)
+qwen2.5-7b-nf4,7.0,nf4,cuda:0,ok,short,0.065,28.0,568.8,5.58,~2.5,5,fully GPU-resident
+qwen2.5-7b-nf4,7.0,nf4,cuda:0,ok,medium,0.126,27.4,939.5,5.73,~2.5,5,fully GPU-resident
+qwen2.5-7b-nf4,7.0,nf4,cuda:0,ok,long,0.125,27.9,882.6,5.73,~2.5,5,fully GPU-resident
+qwen2.5-14b-fp16,14.0,bf16,"0,cpu,disk",ok,short,173.449,0.0,0.1,7.00,21.85,1,"reduced fidelity (n=1); cold disk cache, no warmup"
+qwen2.5-14b-fp16,14.0,bf16,"0,cpu,disk",ok,medium,3.836,0.3,6.8,7.04,22.19,1,"reduced fidelity (n=1); warm disk cache"
+qwen2.5-14b-fp16,14.0,bf16,"0,cpu,disk",ok,long,3.792,0.2,22.6,7.03,22.19,1,"reduced fidelity (n=1); warm disk cache"
+qwen2.5-14b-nf4,14.0,nf4,,error,<load>,,,,,,,"load error: quantized weights (~7.5GB) exceed free VRAM (~7GB); accelerate cannot auto-offload bnb 4-bit modules to CPU/disk without llm_int8_enable_fp32_cpu_offload"
+qwen2.5-14b-nf4-cpuoffload,14.0,nf4_cpu_offload,,error,<load>,,,,,,,"load error: 'Tensor.item() cannot be called on meta tensors' -- device_map='auto' does not reliably support bnb 4-bit CPU offload; would require a hand-built device_map, out of scope for Phase 1"

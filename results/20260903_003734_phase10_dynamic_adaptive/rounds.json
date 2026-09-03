@@ -1,0 +1,82 @@
+[
+  {
+    "round": 0,
+    "tenant": "A",
+    "decode_tps": 13.68814571374932
+  },
+  {
+    "round": 1,
+    "tenant": "B",
+    "decode_tps": 8.98560480435342
+  },
+  {
+    "round": 2,
+    "tenant": "A",
+    "decode_tps": 21.504279658742494
+  },
+  {
+    "round": 3,
+    "tenant": "B",
+    "decode_tps": 10.691706031166959
+  },
+  {
+    "round": 4,
+    "tenant": "A",
+    "decode_tps": 24.359849261069165
+  },
+  {
+    "round": 5,
+    "tenant": "A",
+    "decode_tps": 12.145050068017888
+  },
+  {
+    "round": 6,
+    "tenant": "A",
+    "decode_tps": 23.104956243792454
+  },
+  {
+    "round": 7,
+    "tenant": "A",
+    "decode_tps": 22.201599403459713
+  },
+  {
+    "round": 8,
+    "tenant": "B",
+    "decode_tps": 11.202661752485785
+  },
+  {
+    "round": 9,
+    "tenant": "B",
+    "decode_tps": 10.58809453468653
+  },
+  {
+    "round": 10,
+    "tenant": "B",
+    "decode_tps": 11.083342938835951
+  },
+  {
+    "round": 11,
+    "tenant": "B",
+    "decode_tps": 10.0696358474889
+  },
+  {
+    "round": 12,
+    "tenant": "A",
+    "decode_tps": 24.00752876065347
+  },
+  {
+    "round": 13,
+    "tenant": "B",
+    "decode_tps": 10.652870286490037
+  },
+  {
+    "round": 14,
+    "tenant": "A",
+    "decode_tps": 22.48946127777412
+  },
+  {
+    "round": 15,
+    "tenant": "B",
+    "decode_tps": 11.180022641173855
+  }
+]

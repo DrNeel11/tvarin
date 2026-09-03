@@ -1,0 +1,9 @@
+{
+  "shared": {
+    "hits": 672,
+    "misses": 92,
+    "hit_rate": 0.8795811518324608,
+    "evictions": 84,
+    "cross_tenant_evictions": 46
+  }
+}

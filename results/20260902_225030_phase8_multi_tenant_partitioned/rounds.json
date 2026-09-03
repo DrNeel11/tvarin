@@ -1,0 +1,32 @@
+[
+  {
+    "round": 0,
+    "tenant_a_decode_tps": 13.239188831262897,
+    "tenant_b_decode_tps": 0.7686873748336678
+  },
+  {
+    "round": 1,
+    "tenant_a_decode_tps": 17.67985718694791,
+    "tenant_b_decode_tps": 0.7824826197191302
+  },
+  {
+    "round": 2,
+    "tenant_a_decode_tps": 16.47885092490812,
+    "tenant_b_decode_tps": 0.8019746908240651
+  },
+  {
+    "round": 3,
+    "tenant_a_decode_tps": 18.749805805643664,
+    "tenant_b_decode_tps": 0.7995825082734703
+  },
+  {
+    "round": 4,
+    "tenant_a_decode_tps": 17.999231175866946,
+    "tenant_b_decode_tps": 0.8050581388840967
+  },
+  {
+    "round": 5,
+    "tenant_a_decode_tps": 17.608592188144485,
+    "tenant_b_decode_tps": 0.799886726897408
+  }
+]

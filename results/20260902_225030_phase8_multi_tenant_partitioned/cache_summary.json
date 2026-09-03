@@ -1,0 +1,16 @@
+{
+  "tenantA": {
+    "hits": 318,
+    "misses": 6,
+    "hit_rate": 0.9814814814814815,
+    "evictions": 0,
+    "cross_tenant_evictions": 0
+  },
+  "tenantB": {
+    "hits": 0,
+    "misses": 432,
+    "hit_rate": 0.0,
+    "evictions": 428,
+    "cross_tenant_evictions": 0
+  }
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "prompt_name": "short",
+    "median_decode_tokens_per_s": 15.95890445312222,
+    "median_ttft_s": 0.08255719999942812,
+    "n_reps": 2
+  },
+  {
+    "prompt_name": "medium",
+    "median_decode_tokens_per_s": 15.113106952394363,
+    "median_ttft_s": 0.07457960000101593,
+    "n_reps": 2
+  },
+  {
+    "prompt_name": "long",
+    "median_decode_tokens_per_s": 15.49567308951506,
+    "median_ttft_s": 0.07232110000040848,
+    "n_reps": 2
+  }
+]
