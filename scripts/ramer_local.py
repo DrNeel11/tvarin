@@ -189,6 +189,17 @@ def cmd_probe(args):
     print(f"[ramer-local] cached under key: {key}")
 
 
+QUICK_CHECK_PREDICT = 20
+QUICK_CHECK_REGRESSION_TOL = 0.7  # below this fraction of the cached tok/s counts as "the split is now stale"
+USAGE_LOG_PATH = Path(__file__).resolve().parents[1] / "ramer_local_usage.jsonl"
+
+
+def log_usage(**fields):
+    fields["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with open(USAGE_LOG_PATH, "a") as f:
+        f.write(json.dumps(fields) + "\n")
+
+
 def cmd_run(args):
     digest = model_digest(args.model)
     key = cache_key(args.model, digest, args.num_predict)
@@ -202,25 +213,27 @@ def cmd_run(args):
     else:
         result = cache[key]
     num_gpu = result["recommended"]["num_gpu"]
-    probed_free = result.get("free_vram_mib_at_probe")
+    cached_tps = result["recommended"]["decode_tok_s"]
+    stale = False
+
     # Only meaningful against a REUSED cached result -- right after a fresh
     # probe the model is still resident from the probe's own last
-    # measurement, which would make "free VRAM now" read artificially low
-    # and falsely warn every single time.
-    if not freshly_probed and probed_free is not None and num_gpu not in ("auto", None):
-        unload(args.model)
-        _, free_now = gpu_vram_mib()
-        # the split was picked close to this machine's VRAM ceiling at probe
-        # time -- if something else is now using noticeably more VRAM than
-        # it was then, that same split can land in the cliff Experiment B
-        # found, not just run a bit slower. Warn rather than block: still
-        # cheaper than silently eating a 3x regression.
-        if free_now < probed_free - 500:
-            print(f"[ramer-local] warning: {probed_free - free_now} MiB less VRAM free now than at probe time "
-                  f"({free_now} vs {probed_free} MiB) -- this split may now be past the cliff. "
-                  f"Consider re-probing with --force.\n")
+    # measurement, so a check here would just re-confirm the number we
+    # already trust. A quick direct throughput check is ground truth
+    # (whatever changed -- VRAM pressure, something else on the GPU --
+    # doesn't need to be identified, only detected) rather than inferring
+    # staleness from free-VRAM alone.
+    if not freshly_probed and num_gpu not in ("auto", None):
+        check = measure(args.model, num_gpu, QUICK_CHECK_PREDICT, PROBE_PROMPT)
+        if cached_tps > 0 and check["decode_tok_s"] < cached_tps * QUICK_CHECK_REGRESSION_TOL:
+            print(f"[ramer-local] cached split (num_gpu={num_gpu}) now measures {check['decode_tok_s']} tok/s, "
+                  f"down from {cached_tps} tok/s at probe time -- likely past the cliff now. "
+                  f"Falling back to Ollama's auto placement for this run (re-probe with --force when convenient).\n")
+            num_gpu = "auto"
+            stale = True
+
     prompt = " ".join(args.prompt) or PROBE_PROMPT
-    print(f"[ramer-local] running {args.model} with num_gpu={num_gpu} (from cache)...\n")
+    print(f"[ramer-local] running {args.model} with num_gpu={num_gpu}...\n")
     unload(args.model)
     options = {} if num_gpu == "auto" else {"num_gpu": num_gpu}
     resp = _post("/api/generate", {
@@ -230,7 +243,14 @@ def cmd_run(args):
     print(resp.get("response", ""))
     eval_count = resp.get("eval_count") or 0
     eval_duration_ns = resp.get("eval_duration") or 1
-    print(f"\n[ramer-local] {round(eval_count / (eval_duration_ns / 1e9), 2)} tok/s")
+    ramer_tps = round(eval_count / (eval_duration_ns / 1e9), 2)
+    print(f"\n[ramer-local] {ramer_tps} tok/s")
+
+    log_usage(
+        model=args.model, num_gpu=num_gpu, ramer_tok_s=ramer_tps,
+        auto_tok_s=result["auto"]["decode_tok_s"], stale=stale, freshly_probed=freshly_probed,
+        eval_count=eval_count,
+    )
 
 
 def cmd_show_cache(args):
@@ -242,6 +262,18 @@ def cmd_show_cache(args):
         r = result["recommended"]
         print(f"{key}\n  num_gpu={r['num_gpu']}  {r['decode_tok_s']} tok/s  {r['size_vram_gb']} GB VRAM"
               + (f"  ({result['gain_over_auto_pct']:+.1f}% vs auto)" if result.get('gain_over_auto_pct') is not None else ""))
+
+
+def cmd_show_log(args):
+    if not USAGE_LOG_PATH.exists():
+        print("[ramer-local] usage log is empty -- run `ramer_local.py run <model> ...` a few times first")
+        return
+    rows = [json.loads(line) for line in USAGE_LOG_PATH.read_text().splitlines() if line.strip()]
+    print(f"{'ts':<20} {'model':<28} {'num_gpu':>8} {'ramer tok/s':>12} {'auto tok/s':>11} {'gain':>7}  stale")
+    for r in rows:
+        gain = f"{100 * (r['ramer_tok_s'] / r['auto_tok_s'] - 1):+.1f}%" if r.get("auto_tok_s") else "n/a"
+        print(f"{r['ts']:<20} {r['model']:<28} {str(r['num_gpu']):>8} {r['ramer_tok_s']:>12} "
+              f"{r.get('auto_tok_s', 'n/a'):>11} {gain:>7}  {'yes' if r.get('stale') else ''}")
 
 
 def main():
@@ -263,6 +295,9 @@ def main():
 
     p_cache = sub.add_parser("show-cache", help="list all cached placements")
     p_cache.set_defaults(func=cmd_show_cache)
+
+    p_log = sub.add_parser("show-log", help="show the history of every `run` invocation (auto vs ramer tok/s)")
+    p_log.set_defaults(func=cmd_show_log)
 
     args = parser.parse_args()
     args.func(args)
