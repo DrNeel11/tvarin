@@ -173,6 +173,44 @@ reason a bigger model specifically matters (e.g. someone's actual workload
 is a 20B+ model, not a smaller one) -- not as a default next technical
 step.
 
+## Ramer Local V0: built, not just hypothesized (2026-09-04)
+
+Per the "you're customer #1" reframe -- built the smallest real version of
+Experiment B's finding: `scripts/ramer_local.py`, a CLI that sweeps
+`num_gpu` for a given Ollama model on this machine, picks the
+best-observed split, and caches it (`probe`, `run`, `show-cache`
+subcommands). Two real, previously-unknown things surfaced in the first
+hour of actually using it, not just theorizing about it:
+
+1. **Off-by-one in the naive version of this exact idea.** `num_gpu`
+   counts transformer blocks *plus* the output/embedding tensor -- so
+   `num_gpu = block_count` (what `/api/show`'s `model_info` reports) is
+   one layer short of true full offload. The first working version of the
+   tool recommended `num_gpu=28` for a 7B model that fits entirely in
+   VRAM, measured it as ~20% slower than Ollama's own auto default, and
+   would have shipped that as "the optimal split" if the tool hadn't also
+   measured auto for comparison. Fixed by sweeping to `block_count + 1`.
+   Lesson: always include Ollama's own choice as a literal candidate in
+   the comparison, not just a reference number -- a hand-picked
+   alternative can look like a win by a measurement bug alone.
+2. **The optimal split isn't a fixed property of a model+GPU -- it drifts
+   with whatever else is using VRAM right now.** Re-running the identical
+   probe in different desktop sessions saw free VRAM at probe time range
+   from ~7 GB to ~300 MB (browser tabs, widgets, other apps), and the
+   measured peak shifted layer-to-layer accordingly (33-41 one run, a
+   cleaner 37 another). A "probe once, cache forever" design can hand back
+   a split that was safe when cached and lands inside the cliff later.
+   V0 now records free VRAM at probe time and warns (not blocks) at `run`
+   if free VRAM has dropped meaningfully since -- a real product
+   requirement (session-aware placement, not static placement) discovered
+   by using the tool, not by predicting it in advance.
+
+Best observed result matches Experiment B's shape: on `qwen2.5:14b-instruct`,
+recommended `num_gpu=37` got ~19 tok/s vs auto's ~12.4 tok/s -- consistent
+with, though not identical in absolute numbers to, Experiment B's manual
+sweep (num_gpu=40, 19.64 tok/s), because the actual peak location moves
+with current VRAM pressure as described above.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
