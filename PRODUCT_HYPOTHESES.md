@@ -159,6 +159,20 @@ engineering time to a product -- Experiment B closes out the "kill or
 validate via more solo experiments" phase without producing a company-scale
 wedge on its own.
 
+**Deferred: a possible future confirming experiment, not run.** Post-close,
+verified that Qwen3.8-27B (Qwen's current open-weight release as of
+2026-09; Qwen3.7 turned out to be cloud/API-only, no open weights) is a
+real, downloadable, much larger model than the 14B used in Experiment B --
+a candidate for repeating the offload sweep at a scale where VRAM
+undersizing is more severe. Deliberately not run: the underlying mechanism
+Experiment B found (driver-level VRAM-boundary paging, a static placement
+heuristic) isn't architecture- or size-specific, so a 27B repeat would
+almost certainly reproduce the same qualitative shape rather than change
+the verdict above. Worth revisiting only if customer interviews surface a
+reason a bigger model specifically matters (e.g. someone's actual workload
+is a 20B+ model, not a smaller one) -- not as a default next technical
+step.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
