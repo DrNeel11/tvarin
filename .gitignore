@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .claude/
 ramer_local_cache.json
+ramer_local_usage.jsonl

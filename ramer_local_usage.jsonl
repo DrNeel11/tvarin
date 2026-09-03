@@ -1,2 +1,0 @@
-{"model": "qwen2.5:14b-instruct", "num_gpu": 37, "ramer_tok_s": 22.68, "auto_tok_s": 12.771, "stale": false, "freshly_probed": true, "eval_count": 3, "ts": "2026-09-04T00:39:28"}
-{"model": "qwen2.5:14b-instruct", "num_gpu": 37, "ramer_tok_s": 18.06, "auto_tok_s": 12.771, "stale": false, "freshly_probed": false, "eval_count": 10, "ts": "2026-09-04T00:39:49"}
