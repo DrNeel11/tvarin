@@ -260,6 +260,40 @@ that the pain exists -- it just doesn't by itself tell you Ramer's
 specific mechanism is the fix, which is exactly what the interviews still
 need to establish.
 
+**Update (2026-09-05), relayed from a Reddit thread analysis, not
+independently verified here.** The user brought back a summary of a
+r/LocalLLaMA thread (~300 upvotes, ~452 comments) asking why the
+subreddit's visible hardware skews so much higher-VRAM than what ordinary
+people actually own. The commentary quoted is consistent with something
+well known about that community and worth taking at face value even
+unverified: r/LocalLLaMA is a **selection-biased enthusiast bubble** --
+commenters there describe it as a "world bubble minority," note "99%
+wouldn't know what VRAM is," and call the visible high-end hardware
+"survivorship bias" / "the crazy end of the pool." Underneath that bubble,
+plenty of commenters described running local AI on genuinely constrained
+8-16GB VRAM, using the workarounds you'd expect (quantization, CPU
+offload, MoE, multi-GPU) rather than upgrading -- and one described
+running local models on modest hardware specifically to build experience,
+while still paying for cloud LLM subscriptions alongside it (a **local
+when possible, cloud when necessary** hybrid workflow, not a
+local-replaces-cloud one).
+
+This sharpens the target user further than H1/H2 already had: not
+"everyone who wants to run AI locally" (too broad, and most people
+outside the enthusiast bubble aren't reachable or motivated by this at
+all), but **someone who already runs local AI, is capacity-constrained
+(8-16GB-class VRAM), and is bothered that their GPU isn't used well** --
+which is, concretely, the user themselves, reinforcing why using Ramer
+Local V0.1 firsthand is still the right next validation step rather than
+another scrape. Explicitly two separate claims, only one of which this
+narrows further: **"VRAM is scarce for a real population of local-AI
+users" stays validated** (consistent with everything found earlier in
+this section); **"people would pay for a VRAM-optimization layer" is
+still unvalidated** -- nothing in this thread speaks to willingness to
+pay, only to the workaround-tolerance of people who already run local AI
+without one. That distinction is the reason the next input should be
+`show-log` data from real usage, not more forum reading.
+
 ---
 
 ## H1: RAM-constrained edge/embedded AI (highest priority)
