@@ -322,6 +322,45 @@ staleness recurs *after* this fix -- this specific mechanism is now
 closed, but it doesn't rule out other causes of drift (true VRAM pressure
 from non-Ollama apps, which the fix does nothing about).
 
+**Tested that exact remaining question directly (2026-09-06) -- genuine
+external (non-Ollama) VRAM pressure, simulated with a small PyTorch script
+holding 2.5-3GB of real VRAM that `unload_others()` cannot see or clear.**
+Two things came out of this, one much bigger than intended:
+
+**A major, unrelated latency bug, found by accident.** A simple "what is
+2+2" round-trip was taking 22-25 seconds wall-clock regardless of whether
+the artificial pressure was active -- the pressure wasn't the cause.
+Instrumented every internal call and found each one taking ~2 seconds
+longer via this tool than the identical request made with `curl`.
+Root cause, confirmed directly and in isolation from Ollama entirely:
+`OLLAMA_HOST` was `"http://localhost:11434"`, and Python's `urllib` on
+this machine stalls ~2.05s resolving/connecting to `"localhost"` (tries
+IPv6, falls back) versus ~0.002s for the identical request to
+`"127.0.0.1"` -- a >1000x difference on every single API call. Since one
+`run` invocation makes 5-6 calls, this was adding ~10-12s of pure dead
+time to *every* call this tool has ever made, unrelated to the model, the
+GPU, or VRAM pressure at all. One-line fix (`scripts/ramer_local.py`,
+commit `42dc064`): verified the identical call dropped from 22.2s to
+8.19s wall-clock. This is a bigger, more universal win than anything else
+found today -- it affects every invocation, not just the VRAM-drift
+cases -- and it's exactly the kind of thing a designed benchmark would
+never surface, because nobody benchmarks wall-clock time on a tool whose
+own metric is tok/s.
+
+**The actual question, once the noise was removed: yes, the safety net
+generalizes to real external pressure.** With the latency fix in place,
+running 14B while a separate process held 3GB of real VRAM triggered the
+quick-check correctly (11.79 tok/s measured vs. 16.94 tok/s cached, below
+the regression threshold), fell back to Ollama's auto placement, and
+completed safely at 13.83 tok/s in 11.5s total. The mechanism generalizes
+because it's cause-agnostic -- it measures actual throughput, not "is
+another Ollama model loaded," so it doesn't need to know *why* something
+degraded to react to it. What it can't do is recover the *optimal*
+placement for the new constrained state (auto is safe, not necessarily
+best under 3GB less headroom) -- that would need a fresh probe under the
+current conditions, which nothing does automatically, and still isn't
+being built, per the same discipline as the parked controller idea.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
