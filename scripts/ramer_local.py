@@ -100,6 +100,19 @@ def measure(model: str, num_gpu: int | None, num_predict: int, prompt: str) -> d
     )
 
 
+def safe_measure(model: str, num_gpu, num_predict: int, prompt: str) -> dict:
+    """measure(), but a candidate that crashes Ollama server-side (observed
+    directly: qwen2.5:32b-instruct at a high num_gpu returned HTTP 500 --
+    server survived, that one request didn't) is data, not a reason to kill
+    the whole sweep. Recorded as a failed candidate (decode_tok_s=0) so it's
+    never picked as best, same treatment as a candidate that merely falls
+    off the VRAM cliff."""
+    try:
+        return dict(measure(model, num_gpu, num_predict, prompt), failed=False)
+    except Exception as e:
+        return dict(num_gpu=num_gpu, decode_tok_s=0.0, size_vram_gb=None, failed=True, error=str(e))
+
+
 def probe(model: str, num_predict: int, prompt: str, log=print) -> dict:
     n_layers = total_layers(model)
     unload(model)  # in case it's still resident from a previous invocation -- keep the free-VRAM baseline honest
@@ -120,25 +133,34 @@ def probe(model: str, num_predict: int, prompt: str, log=print) -> dict:
     full = n_layers + 1
     steps = 6
     grid = sorted({round(i * full / steps) for i in range(steps + 1)} | {full})
-    results = [dict(auto, num_gpu="auto")]
+    results = [dict(auto, num_gpu="auto", failed=False)]
     for n in grid:
-        r = measure(model, n, num_predict, prompt)
+        r = safe_measure(model, n, num_predict, prompt)
         results.append(r)
+        if r["failed"]:
+            log(f"  num_gpu={n:>3}: FAILED ({r['error']}) -- stopping sweep, higher splits won't recover")
+            break
         log(f"  num_gpu={n:>3}: {r['decode_tok_s']:>7} tok/s, {r['size_vram_gb']:>6} GB VRAM")
 
-    best = max(results, key=lambda r: r["decode_tok_s"])
+    ok_results = [r for r in results if not r["failed"]]
+    best = max(ok_results, key=lambda r: r["decode_tok_s"])
     best_idx = grid.index(best["num_gpu"]) if best["num_gpu"] in grid else len(grid) - 1
 
     # one refinement pass: check the midpoint between the best grid point and
     # its next-higher neighbor -- catches a finer-grained optimum without a
     # full re-sweep, and confirms whether that neighbor was a real cliff.
-    if best_idx + 1 < len(grid):
+    # Skipped if the sweep above already stopped early on a failure --
+    # nothing above the best point is trustworthy to probe further.
+    if best_idx + 1 < len(grid) and len(ok_results) == len(results):
         mid = (grid[best_idx] + grid[best_idx + 1]) // 2
         if mid not in grid:
-            r = measure(model, mid, num_predict, prompt)
+            r = safe_measure(model, mid, num_predict, prompt)
             results.append(r)
-            log(f"  refine num_gpu={mid:>3}: {r['decode_tok_s']:>7} tok/s, {r['size_vram_gb']:>6} GB VRAM")
-            if r["decode_tok_s"] > best["decode_tok_s"]:
+            if r["failed"]:
+                log(f"  refine num_gpu={mid:>3}: FAILED ({r['error']})")
+            else:
+                log(f"  refine num_gpu={mid:>3}: {r['decode_tok_s']:>7} tok/s, {r['size_vram_gb']:>6} GB VRAM")
+            if not r["failed"] and r["decode_tok_s"] > best["decode_tok_s"]:
                 best = r
 
     if auto["decode_tok_s"] > 0:

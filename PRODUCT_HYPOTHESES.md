@@ -211,6 +211,33 @@ with, though not identical in absolute numbers to, Experiment B's manual
 sweep (num_gpu=40, 19.64 tok/s), because the actual peak location moves
 with current VRAM pressure as described above.
 
+**Boundary case (2026-09-05): the "does Ramer make an impractical model
+practical" test, on `qwen2.5:32b-instruct` (19GB Q4_K_M, 64 layers) on the
+same 8GB card.** Answer: **no.** Best achievable split (`num_gpu=22`,
+7.48GB) got 3.29-3.78 tok/s, only **+6.7%** over Ollama's own auto default
+(3.08-3.17 tok/s) -- nowhere near the 14B case's +61%. A one-line prompt
+("What is the capital of France?") took over two minutes wall-clock,
+almost entirely model-load time, at any split. There just isn't headroom
+to unlock here: this model is ~2.3x the 14B one tested in Experiment B,
+and every split tested tops out in the 2.4-3.8 tok/s range -- unusable for
+interactive use regardless of placement. **Ramer can optimize around a
+memory constraint; it cannot repeal the hardware constraint.** Keep this
+as the boundary case against overclaiming: the win is real (Experiment
+B's 14B case, this V0's own +12-61% results depending on model/session)
+but bounded -- it recovers slack Ollama's own heuristic leaves on the
+table, it does not turn "doesn't fit" into "fits."
+
+This run also found a real robustness bug in the tool itself: pushing
+`num_gpu` far enough into VRAM oversubscription (`num_gpu=54` of 65, here)
+didn't just degrade throughput, it crashed that one Ollama request outright
+(`HTTP 500`) -- the Ollama *server* survived, but the probe script did not
+without a fix. `scripts/ramer_local.py`'s sweep now treats a crashed
+candidate as a failed data point (never selected, sweep stops early
+rather than dying) instead of letting one bad candidate kill the whole
+probe -- caught by actually running the tool against a large enough model,
+exactly the kind of finding a bigger real-usage pass was expected to
+surface.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
