@@ -238,6 +238,35 @@ probe -- caught by actually running the tool against a large enough model,
 exactly the kind of finding a bigger real-usage pass was expected to
 surface.
 
+## First real-usage sample (2026-09-05, compressed into one session)
+
+Per the 7-day real-usage plan, generated a first small sample now rather
+than waiting: 7 real `run` invocations across 14B/32B/7B with varied
+prompts (code, explanation, casual, long-form), switching models between
+calls to specifically exercise the model-switching and VRAM-drift cases
+the plan called out. Raw log: `ramer_local_usage.jsonl` /
+`show-log`. Gains ranged from **-21.7% to +77.6%** on the *same* model and
+split, depending on what else had recently touched the GPU -- the average
+is a real positive, but any single call is not guaranteed to win.
+
+Two honest findings, not smoothed over:
+
+1. **The staleness safety net has a real gap.** One 14B call (a long,
+   ~400-token response) landed at 10.0 tok/s -- *worse* than Ollama's own
+   auto placement (12.77 tok/s at probe time) -- and the 20-token quick
+   check before it did NOT catch this; it only triggered the fallback on
+   the *next* call, after more drift had accumulated. A short probe is a
+   leading indicator, not a guarantee, especially once a real generation
+   runs long enough for throughput to drift mid-response. Noted, not
+   fixed yet -- consistent with the "don't immediately fix what you
+   notice, write it down" discipline for this usage phase.
+2. **The safety net did also work as designed, once.** Immediately after
+   the above, switching back to 14B (right after a 32B load) triggered a
+   correct fallback: quick check measured 11.5 tok/s vs. the cached 16.9
+   tok/s, fell back to auto, ran at 12.18 tok/s instead of risking another
+   regression. This is the mechanism from the "V0.1" section working
+   exactly as intended, live, not in a designed test.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
