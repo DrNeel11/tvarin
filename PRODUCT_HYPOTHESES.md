@@ -295,6 +295,33 @@ recurring problem with the system's own measurements of the failure
 already in hand -- a much stronger starting point than a clever idea
 looking for a problem.
 
+**Update, same day: the pattern recurred immediately and was root-caused,
+not just observed.** Continued generating usage (switching between
+3B/7B/14B/32B repeatedly) and the exact failure above reproduced **4/4
+times in a row** -- every single switch back to `qwen2.5:14b-instruct`
+after another model triggered the staleness fallback (10.0-11.8 tok/s vs.
+16.9 tok/s at probe time). That's not the "wait a week and see if it
+recurs" signal the parked idea called for -- it recurred on demand, which
+pointed at something mechanical rather than diffuse "environment
+changes." Root cause found and confirmed: **Ollama's default `keep_alive`
+(~5 min) keeps a previous model resident in VRAM after you've moved on to
+a different one**, and nothing in `ramer_local.py` ever unloaded it --
+`unload()` only ever targeted the model about to run. Every switch was
+running the new model's cached placement while the old one was still
+warm and competing for the same VRAM.
+
+This is narrower and cheaper than the parked "placement-decision
+controller" idea -- no streaming, no learned model, no sustained-drift
+detection needed. Fix: `unload_others()` checks `/api/ps` and evicts
+anything else resident before probing or running (`scripts/ramer_local.py`,
+commit `ecdf7dc`). Verified fixed **2/2** immediately after: 15.34 and
+14.32 tok/s on the identical switch-back scenario that failed 4/4 times
+before, no staleness fallback triggered, both real wins over auto
+(+20.1%, +12.1%). The parked controller idea should be revisited only if
+staleness recurs *after* this fix -- this specific mechanism is now
+closed, but it doesn't rule out other causes of drift (true VRAM pressure
+from non-Ollama apps, which the fix does nothing about).
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
