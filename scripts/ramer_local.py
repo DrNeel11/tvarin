@@ -25,7 +25,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_HOST = "http://127.0.0.1:11434"  # NOT "localhost" -- urllib resolving it stalls ~2s/request on this machine (tries IPv6 first, falls back), found by timing every request in a single `run` call summing to ~22s of pure overhead unrelated to the model or GPU at all
 CACHE_PATH = Path(__file__).resolve().parents[1] / "ramer_local_cache.json"
 REGRESSION_TOL = 0.85  # a candidate more than this far below the running best is treated as a cliff, not noise
 
