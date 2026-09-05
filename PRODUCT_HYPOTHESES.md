@@ -444,6 +444,78 @@ pay, only to the workaround-tolerance of people who already run local AI
 without one. That distinction is the reason the next input should be
 `show-log` data from real usage, not more forum reading.
 
+**Update (2026-09-06): Ollama's own GitHub issues independently confirm
+Ramer's exact core findings, and revise the "quick upstream PR" assessment
+downward.** Searched Ollama's issue tracker and related posts specifically
+for VRAM-placement pain, rather than general local-AI frustration. This is
+stronger evidence than forum vibes -- these are reproducible engineering
+bug reports with hardware specs and logs, not sentiment.
+
+**[ollama/ollama#7629](https://github.com/ollama/ollama/issues/7629)
+is close to an exact independent replication of Experiment B**, on
+near-identical hardware: RTX 2070 (8GB VRAM, same class as this project's
+RTX 5060), Windows, 32GB RAM. Quote: *"llama.cpp achieves 7.2 to 7.5 GB
+[utilization]... Ollama only reaches approximately 6GB"* -- the user
+explicitly expected Ollama to "use the maximum available VRAM similar to
+llama.cpp's behavior" and got slower generation instead. That is, to
+within rounding, Experiment B's own measurement (auto: 6.2GB/12.2 tok/s vs.
+achievable: 7.83GB/19.6 tok/s). **The important new fact: this issue was
+opened November 2024 -- Experiment B reproduced the identical gap
+~22 months later**, on different hardware, a different GPU generation, no
+visible fix in between. That revises this project's own "buildable in an
+afternoon, plausible single upstream PR" assessment of the VRAM-ceiling
+gap *downward* in confidence -- if it were that easy, two years and a
+specific bug report should have been enough. It's a real, durable,
+apparently-not-trivially-fixed gap, not a shallow one about to be
+absorbed upstream.
+
+**[ollama/ollama#3837](https://github.com/ollama/ollama/issues/3837)**
+independently describes the same *class* of confusion Experiment B found
+at the VRAM boundary, on another 8GB card (RTX 3070): *"the GPU vram fills
+~7GB but the compute remains at 0-1% and 16 cores of my CPU are active...
+the model is running purely on the CPU and not using the GPU"* -- VRAM
+being consumed without the expected performance benefit, the same
+"filled but not usefully used" confusion as the driver-paging cliff
+Experiment B found and confirmed via live `nvidia-smi` monitoring.
+
+**[ollama/ollama#13235](https://github.com/ollama/ollama/issues/13235)
+and [#14632](https://github.com/ollama/ollama/issues/14632)** describe
+multi-GPU sequential-model-loading failures (three-GPU setups, 24-72GB
+total VRAM) -- *"model requires more memory than is currently available,
+evicting a model to make space"* followed by unexpected CPU fallback, and
+improper same-GPU placement despite other GPUs sitting idle. Different
+scale than a single consumer card (closer to H3's "a few GPUs, a small
+team" framing than H1/H2), but structurally the same story this project
+found and fixed itself: sequential model loading leaves VRAM in a state
+the next load doesn't correctly account for -- the exact shape of bug
+`unload_others()` fixed for the single-GPU case, evidently unresolved for
+Ollama's own multi-GPU placement as of these reports.
+
+**One related but distinct mechanism, worth separating out**: a
+[dev.to post](https://dev.to/ljkunal/how-ollama-silently-ate-65gb-of-my-vram-and-how-i-fixed-it-22pf)
+describes a 120GB-VRAM production deployment (DGX Spark, continuous
+camera-feed inference) where memory crept from ~10GB to 70.8GB because
+Ollama pre-allocates KV cache for a model's full *declared* context length
+(128K tokens) regardless of actual usage (~1K tokens) -- fixed by manually
+capping `num_ctx`. This is KV-cache sizing, not GPU/CPU layer placement --
+a different data structure and mechanism (closer to LMCache's territory
+per this doc's Competitive Landscape section) -- but the same broader
+pattern: Ollama's memory behavior is opaque enough that people build their
+own manual workarounds and write it up afterward. Relevant context for
+H1/H3 (production/always-on deployments), not something Ramer Local
+currently addresses.
+
+**Net effect on the hypotheses**: this is real, corroborating, unprompted
+technical evidence (bug reports, not think-pieces) that the exact gap
+Ramer Local targets is known, reported, and has persisted for ~2 years
+across GPU generations -- meaningfully strengthens H1/H2's "why existing
+tools aren't enough" claim specifically for VRAM-placement (separate from
+the still-unvalidated "would people pay for it" question, which none of
+this speaks to). Still not a substitute for the 20 interviews -- GitHub
+issue reporters are also a selection-biased population (people who hit a
+bug AND bothered to file it), just a different, more technically rigorous
+bias than Reddit sentiment.
+
 ---
 
 ## H1: RAM-constrained edge/embedded AI (highest priority)
