@@ -267,6 +267,34 @@ Two honest findings, not smoothed over:
    regression. This is the mechanism from the "V0.1" section working
    exactly as intended, live, not in a designed test.
 
+**Parked idea, deliberately not built (2026-09-05): Ramer as a
+placement-decision controller, not a `num_gpu` sweeper.** The false
+negative above prompted a reframing worth recording before setting it
+aside. The unifying principle: **don't optimize for prediction accuracy,
+optimize for the decision** -- the same structure Phase 10 already found
+for prefetching (confidence + cost + opportunity-to-hide determine whether
+to *act* on a prediction, not just how accurate it is) reappears here
+(calibration confidence + reload cost + remaining generation length
+determine whether to *change* placement, not just how good the placement
+looks). Two honest constraints that keep this grounded rather than
+grandiose: (1) `num_gpu` can't change mid-generation without a full
+reload, so "continuous adaptation" really only ever means "a good cheap
+decision before each call" -- V0.1's quick-check is already a primitive
+version of this, not a first step toward it; (2) a cheap improvement to
+try first, before anything resembling a learned decision model, is
+watching the real per-token rate as an actual response streams out
+(no extra calibration cost, since the request is already happening) and
+requiring *sustained* degradation (not single-sample noise) before
+considering intervention -- and even then, weighing expected benefit
+against the cost of an interruption/reload, since finishing a
+slightly-slower response can beat interrupting it. **Not building this.**
+The trigger to revisit: if the week of real usage shows model-switching /
+memory-pressure / long-generation drift repeatedly making the cached
+placement unreliable (not a one-off, as seen once so far), that's a
+recurring problem with the system's own measurements of the failure
+already in hand -- a much stronger starting point than a clever idea
+looking for a problem.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
