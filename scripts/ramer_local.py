@@ -78,6 +78,20 @@ def unload(model: str):
     _post("/api/generate", {"model": model, "keep_alive": 0})
 
 
+def unload_others(target_model: str):
+    """Ollama's default keep_alive (~5 min) keeps a previously-used model
+    resident in VRAM after you've moved on -- confirmed directly: switching
+    models and back four times in a row, every switch back to a cached
+    placement measured well below its probe-time throughput, because the
+    prior model was still warm and competing for VRAM during the load
+    transition. unload() only ever targeted the model about to run; nothing
+    evicted whatever else was left over from the previous call."""
+    for entry in _get("/api/ps").get("models", []):
+        name = entry.get("name")
+        if name and name != target_model:
+            unload(name)
+
+
 def measure(model: str, num_gpu: int | None, num_predict: int, prompt: str) -> dict:
     """One clean measurement: unload, then generate with an explicit (or
     absent, for Ollama's own auto choice) num_gpu."""
@@ -115,7 +129,8 @@ def safe_measure(model: str, num_gpu, num_predict: int, prompt: str) -> dict:
 
 def probe(model: str, num_predict: int, prompt: str, log=print) -> dict:
     n_layers = total_layers(model)
-    unload(model)  # in case it's still resident from a previous invocation -- keep the free-VRAM baseline honest
+    unload(model)
+    unload_others(model)  # a warm leftover model from a previous invocation would make this probe's own VRAM baseline wrong
     _, free_at_probe_mib = gpu_vram_mib()
     log(f"[ramer-local] {model}: {n_layers} transformer blocks, probing on {gpu_name()} "
         f"({free_at_probe_mib} MiB free)...")
@@ -223,6 +238,7 @@ def log_usage(**fields):
 
 
 def cmd_run(args):
+    unload_others(args.model)  # a model left warm from a previous run competes with this one for VRAM -- see unload_others()
     digest = model_digest(args.model)
     key = cache_key(args.model, digest, args.num_predict)
     cache = load_cache()
