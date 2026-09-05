@@ -12,7 +12,7 @@ export default function Pipeline() {
       <div className="pipeline">
         {STEPS.map((step, i) => (
           <div className="step" key={step.title}>
-            <span className="n mono">{i + 1}</span>
+            <span className="n">{i + 1}</span>
             <div className="body">
               <h3>{step.title}</h3>
               <p>{step.body}</p>

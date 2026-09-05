@@ -11,7 +11,7 @@ export default function ProofSection() {
       <div className="proof">
         {ISSUES.map((issue) => (
           <div className="issue" key={issue.id}>
-            <span className="id mono">{issue.id}</span>
+            <span className="id">{issue.id}</span>
             <div>
               <blockquote>{issue.quote}</blockquote>
               <div className="meta">

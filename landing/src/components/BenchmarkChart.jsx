@@ -4,7 +4,7 @@ export default function BenchmarkChart({ bench }) {
   return (
     <div className="bench">
       <div className="bench-head">
-        <span className="bench-title mono">
+        <span className="bench-title">
           measured — {bench.gpu} · {bench.model}
         </span>
         <span className="bench-delta">{bench.deltaPct}</span>

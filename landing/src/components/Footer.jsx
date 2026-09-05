@@ -2,7 +2,7 @@ export default function Footer() {
   return (
     <footer>
       <div className="wrap">
-        <span className="fname mono">~/ramer/landing/index.html</span>
+        <span className="fname">~/ramer/landing/index.html</span>
         <div className="links">
           <a href="#caveats">caveats</a>
           <a
