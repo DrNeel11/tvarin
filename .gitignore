@@ -5,3 +5,5 @@ __pycache__/
 .claude/
 ramer_local_cache.json
 ramer_local_usage.jsonl
+landing/node_modules/
+landing/dist/
