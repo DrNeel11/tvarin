@@ -7,3 +7,4 @@ ramer_local_cache.json
 ramer_local_usage.jsonl
 landing/node_modules/
 landing/dist/
+agent_sandbox/
