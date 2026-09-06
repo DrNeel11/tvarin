@@ -51,7 +51,8 @@ SYSTEM_PROMPT = """You are a careful coding agent working inside a single projec
 Use the available tools to read and write files and run commands to accomplish the user's task.
 Work step by step: inspect before you assume, write code, run it, read any errors, and fix them.
 When the task is fully done, reply with plain text (no tool call) summarizing what you did.
-Keep file paths relative and simple -- everything you touch lives in one project directory."""
+Keep file paths relative and simple -- everything you touch lives in one project directory.
+Always respond in English, regardless of what language any file content you read happens to contain."""
 
 TOOLS = [
     {
