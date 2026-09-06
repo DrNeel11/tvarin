@@ -46,8 +46,15 @@ placement stops matching reality.
 
 ## Quick start
 
-Requires Python 3.10+, a local Ollama install, and an NVIDIA GPU
-(`nvidia-smi` on PATH).
+Requires Python 3.10+, a local Ollama install, and a **discrete NVIDIA
+GPU** (`nvidia-smi` on PATH). Tested on Windows; the discrete-GPU
+assumption should hold on Linux too, but that's untested.
+
+**Not applicable to Apple Silicon Macs.** This tool optimizes the split
+between VRAM and system RAM across a PCIe bus -- a discrete-GPU problem.
+Unified memory (every M-series Mac) has no such split to optimize, and
+`nvidia-smi` doesn't exist there regardless. See `PRODUCT_HYPOTHESES.md`
+(H2) for why this matters for who this is actually useful to.
 
 ```bash
 # find and cache the fastest layer split for a model at your context window

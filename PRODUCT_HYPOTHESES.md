@@ -912,6 +912,37 @@ one model at a time, or default to cloud APIs for anything demanding
 enough to need this; if Ollama/LM Studio already handle the common case
 well enough that nobody notices the gap this targets.
 
+**Hardware scoping problem, flagged before interviews rather than found
+during them (2026-09-06)**: everything built and measured so far --
+`ramer_local.py`, both experiments, all of it -- assumes a *discrete*
+GPU: VRAM and system RAM are two separate pools connected over PCIe, so
+there's a real placement decision and a real cliff at the VRAM boundary.
+That's true for RTX 3060/4060/5060-class Windows/Linux machines, the
+hardware this project has actually tested on. **It is not true on Apple
+Silicon Macs.** Unified memory means CPU and GPU share one RAM pool --
+no separate VRAM ceiling, no PCIe hop, nothing to place. Ollama's Metal
+backend just loads the model into that shared pool; the binding
+constraint there is closer to "does the model fit in unified memory at
+all" (a capacity question) than "which layers go in the fast pool vs.
+the slow one" (the optimization question this tool answers). Concretely:
+`ramer_local.py` calls `nvidia-smi` directly and would simply fail to run
+on any Mac today, and a hypothetical Mac port would have little left to
+optimize even if built.
+
+This matters for who gets interviewed, not just what gets built:
+developers experimenting with local LLMs skew heavily toward Apple
+Silicon specifically *because* unified memory (often 32-128GB) makes
+larger models fit without a discrete-GPU-style VRAM ceiling at all --
+plausibly a large fraction of the exact "individual developer running
+local models" population H2 describes. If most interview candidates turn
+out to be on Mac, that's not a reason to abandon the interviews; it's a
+reason interview question #1 ("what hardware are you running?") should
+be used as an early filter, and a reminder that a "yes, this hurts"
+answer from a Mac user validates a demand that this specific tool, as
+built, cannot address -- a different, unified-memory-shaped problem
+(if any) would need its own investigation, not an extension of
+`ramer_local.py`.
+
 ---
 
 ## H3: Small on-prem/compliance-constrained AI teams
