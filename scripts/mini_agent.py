@@ -14,14 +14,18 @@ cached optimal num_gpu is reused automatically. If not, this deliberately
 does NOT trigger a probe itself -- run `ramer_local.py probe <model>`
 first if you want Ramer's placement rather than Ollama's auto default.
 
-All file/command tools are sandboxed to agent_sandbox/ (created next to
-this script's repo root) -- this drives an untested local model with
-real file-write and shell-exec tools, and should not be pointed at
-anything you're not fine with a model editing.
+All file/command tools are confined to one working directory -- by
+default the throwaway agent_sandbox/ next to this repo, or --workdir if
+given (e.g. a real project open in VS Code). This drives an untested
+local model with real file-write and shell-exec tools: point --workdir
+at something you're genuinely fine with a model editing, ideally a
+directory already under version control so a bad edit is a `git diff`
+away from undoing.
 
 Usage:
     python scripts/mini_agent.py <model> "<task description>"
     python scripts/mini_agent.py qwen2.5:14b-instruct "Create hello.py that prints Hello World, then run it."
+    python scripts/mini_agent.py --workdir . qwen2.5:14b-instruct "Add a .gitignore entry for *.log files"
 """
 
 import argparse
@@ -38,8 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ramer_local import OLLAMA_HOST, cache_key, model_digest, load_cache, gpu_vram_mib, gpu_name  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SANDBOX = REPO_ROOT / "agent_sandbox"
-SANDBOX.mkdir(exist_ok=True)
+SANDBOX = REPO_ROOT / "agent_sandbox"  # default; overridden by --workdir in main() before any tool runs
 
 MAX_STEPS = 15
 COMMAND_TIMEOUT_S = 30
@@ -184,15 +187,28 @@ SESSION_LOG_PATH = REPO_ROOT / "mini_agent_sessions.jsonl"
 
 
 def main():
+    global SANDBOX
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("model")
     parser.add_argument("task", nargs="+")
     parser.add_argument("--num-gpu", type=str, default=None,
                          help="override the placement instead of using ramer_local.py's cache -- "
                               "an int, or 'auto' for Ollama's own default. For A/B comparing placements on the identical task.")
+    parser.add_argument("--workdir", type=str, default=None,
+                         help="real project directory to operate in, e.g. your VS Code workspace folder "
+                              "(pass '.' to use the current directory). Defaults to the throwaway agent_sandbox/ "
+                              "next to this repo. All file/command tools stay confined to this directory.")
     cli_args = parser.parse_args()
     model = cli_args.model
     task = " ".join(cli_args.task)
+
+    if cli_args.workdir is not None:
+        SANDBOX = Path(cli_args.workdir).resolve()
+        if not SANDBOX.exists():
+            print(f"[agent] error: --workdir '{cli_args.workdir}' does not exist")
+            sys.exit(1)
+    else:
+        SANDBOX.mkdir(exist_ok=True)
 
     if cli_args.num_gpu is not None:
         num_gpu = "auto" if cli_args.num_gpu == "auto" else int(cli_args.num_gpu)
