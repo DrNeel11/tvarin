@@ -429,6 +429,37 @@ matching the discipline already established for the parked
 placement-controller idea. This vision statement is for later reference,
 not a roadmap being executed now.
 
+## Real agentic-workload validation: mini_agent.py (2026-09-06)
+
+Per the "test Ramer under a real coding-agent workload, not a synthetic
+benchmark" idea -- rather than installing a third-party agent (Cline),
+built a minimal one (`scripts/mini_agent.py`) using Ollama's native
+tool-calling (`/api/chat` + `tools`, the same mechanism Cline/Continue
+use, confirmed real since Qwen2.5-instruct models report `tools` in
+their capabilities). Sandboxed file read/write/list and shell-command
+tools, a real multi-step loop, reuses `ramer_local.py`'s cached optimal
+`num_gpu` automatically.
+
+**Real result, not staged**: asked it to write a `divide()` function with
+a deliberate zero-division bug plus a test that triggers it. It wrote
+both files, ran the test, watched it crash with a real
+`ZeroDivisionError` traceback, diagnosed and fixed the bug, and
+confirmed the fix by re-running -- the actual "sees errors, fixes them"
+loop, not a scripted demo, entirely on Ramer's optimized placement
+(`num_gpu=37` for `qwen2.5:14b-instruct`, the same split Experiment
+B/V0 already validated).
+
+**A real gap this surfaced, noted honestly**: `mini_agent.py` reads
+Ramer's cached `num_gpu` once at startup and uses it for every call in
+the session -- it does **not** go through `ramer_local.py`'s
+staleness quick-check or streaming drift-watch (`run_with_drift_watch`).
+A long agent session (many tool-call round-trips, potentially minutes)
+has exactly the kind of extended, evolving-context workload where those
+safety nets matter most, and currently gets none of them. Noted, not
+fixed yet, consistent with the "observe before building" discipline --
+worth doing if agentic workloads become the primary use case, not
+before.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
