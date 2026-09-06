@@ -385,9 +385,17 @@ def cmd_run(args):
         if cached_tps > 0 and check["decode_tok_s"] < cached_tps * QUICK_CHECK_REGRESSION_TOL:
             print(f"[ramer-local] cached split (num_gpu={num_gpu}) now measures {check['decode_tok_s']} tok/s, "
                   f"down from {cached_tps} tok/s at probe time -- likely past the cliff now. "
-                  f"Falling back to Ollama's auto placement for this run (re-probe with --force when convenient).\n")
+                  f"Falling back to Ollama's auto placement for this run and flagging for a fresh probe next time.\n")
             num_gpu = "auto"
             stale = True
+            # Without this, a stale placement never self-heals: every future
+            # `run` would repeat this exact quick-check failure forever,
+            # since only the mid-generation drift-watch path (below) used to
+            # set needs_reprobe. A pre-flight catch is the same signal --
+            # the cached split no longer matches reality -- and deserves the
+            # same fix, not a permanent manual `--force` requirement.
+            cache[key]["needs_reprobe"] = True
+            save_cache(cache)
 
     prompt = " ".join(args.prompt) or PROBE_PROMPT
     print(f"[ramer-local] running {args.model} with num_gpu={num_gpu} at num_ctx={args.num_ctx}...\n")

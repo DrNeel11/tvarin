@@ -1009,3 +1009,35 @@ interviews reveal nothing worth building, that is not a failed outcome --
 it means this validation phase did exactly what it was for: preventing
 months of work on something nobody needs. Update this file with findings
 as they come in.
+
+**Where to actually find ~20 people running local AI on constrained
+hardware** (the public-research pass above already surfaced these as
+real, active communities, not a guess):
+
+- r/LocalLLaMA and r/Ollama (the source of the "8GB VRAM in 2026" and
+  MoE-offload threads already cited above -- people there are already
+  describing the exact pain points this needs, unprompted, in public)
+- r/LocalLLM, with the selection-bias caveat already on record: it's an
+  enthusiast bubble, useful for finding people to talk to, not for
+  concluding they represent the broader market
+- Ollama's own GitHub issues (search "VRAM", "offload", "OOM") --
+  people who filed a bug are people who hit the problem hard enough to
+  write it up; several such issues are already logged above as
+  independent confirmation
+- LM Studio's Discord -- an adjacent tool with an overlapping user base,
+  useful for checking whether the pain is Ollama-specific or general to
+  local inference
+
+**Outreach template** (keep it short; the interview questions above are
+the substance, not this message):
+
+> Hey -- I saw your post about [specific thing they said]. I'm looking
+> into how people actually run local models day to day -- not selling
+> anything, just trying to understand real setups and where they break.
+> Would you be up for a 15-minute chat (or even just answering a few
+> questions here) about your hardware and workflow?
+
+Anchor every outreach message to something specific they already said
+publicly -- it's the difference between a real conversation and a cold
+pitch, and it's also a soft filter for people who actually have the
+problem rather than people replying to being asked in the abstract.
