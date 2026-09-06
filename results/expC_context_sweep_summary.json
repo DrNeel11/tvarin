@@ -1,0 +1,101 @@
+{
+  "model": "qwen2.5:14b-instruct",
+  "num_predict": 40,
+  "contexts": [
+    2048,
+    4096,
+    6144,
+    8192,
+    12288
+  ],
+  "optimized_by_context": {
+    "2048": {
+      "auto_tok_s": 12.702,
+      "auto_vram_gb": 6.148,
+      "best_num_gpu": 37,
+      "best_tok_s": 16.639,
+      "best_vram_gb": 6.984,
+      "gain_over_auto_pct": 31.0
+    },
+    "4096": {
+      "auto_tok_s": 12.956,
+      "auto_vram_gb": 6.204,
+      "best_num_gpu": 37,
+      "best_tok_s": 16.546,
+      "best_vram_gb": 7.273,
+      "gain_over_auto_pct": 27.7
+    },
+    "6144": {
+      "auto_tok_s": 12.066,
+      "auto_vram_gb": 6.108,
+      "best_num_gpu": 33,
+      "best_tok_s": 14.021,
+      "best_vram_gb": 6.848,
+      "gain_over_auto_pct": 16.2
+    },
+    "8192": {
+      "auto_tok_s": 11.637,
+      "auto_vram_gb": 6.135,
+      "best_num_gpu": 33,
+      "best_tok_s": 13.982,
+      "best_vram_gb": 7.116,
+      "gain_over_auto_pct": 20.2
+    },
+    "12288": {
+      "auto_tok_s": 10.111,
+      "auto_vram_gb": 6.205,
+      "best_num_gpu": 41,
+      "best_tok_s": 13.697,
+      "best_vram_gb": 9.381,
+      "gain_over_auto_pct": 35.5
+    }
+  },
+  "fixed_placement_num_gpu": 37,
+  "fixed_placement_series": [
+    {
+      "num_ctx": 2048,
+      "num_gpu": 37,
+      "decode_tok_s": 15.216,
+      "size_vram_gb": 6.984,
+      "failed": false,
+      "inferred_kv_growth_gb": 0.0,
+      "cliff": false
+    },
+    {
+      "num_ctx": 4096,
+      "num_gpu": 37,
+      "decode_tok_s": 16.123,
+      "size_vram_gb": 7.273,
+      "failed": false,
+      "inferred_kv_growth_gb": 0.289,
+      "cliff": false
+    },
+    {
+      "num_ctx": 6144,
+      "num_gpu": 37,
+      "decode_tok_s": 14.424,
+      "size_vram_gb": 7.588,
+      "failed": false,
+      "inferred_kv_growth_gb": 0.604,
+      "cliff": false
+    },
+    {
+      "num_ctx": 8192,
+      "num_gpu": 37,
+      "decode_tok_s": 16.458,
+      "size_vram_gb": 7.89,
+      "failed": false,
+      "inferred_kv_growth_gb": 0.906,
+      "cliff": false
+    },
+    {
+      "num_ctx": 12288,
+      "num_gpu": 37,
+      "decode_tok_s": 13.926,
+      "size_vram_gb": 8.521,
+      "failed": false,
+      "inferred_kv_growth_gb": 1.537,
+      "cliff": false
+    }
+  ]
+}

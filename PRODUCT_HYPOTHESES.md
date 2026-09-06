@@ -595,6 +595,78 @@ generalizes beyond this case: with measurement noise of a few percent
 and a cliff this sharp, preferring headroom on ties is the right default
 everywhere, not just at large contexts.
 
+## Experiment C: context-length sweep at fixed model/hardware (2026-09-06)
+
+Direct follow-up to the context-aware placement fix above, proposed by the
+user as the next experiment: same model (`qwen2.5:14b-instruct`), same
+GPU, sweep only `num_ctx` in `[2048, 4096, 6144, 8192, 12288]`. Two series
+per context, both via `ramer_local.py`'s own `probe()`/`measure()`:
+
+1. **Optimized** -- a full fresh probe at each context (what Ramer would
+   actually recommend there).
+2. **Fixed** -- `num_gpu=37` (the split chosen at the smallest context,
+   2048) held constant and re-measured at every larger context, to isolate
+   what changes when only the KV cache grows. VRAM in this series moves
+   only because of KV cache (weights are pinned), so its growth relative
+   to the ctx=2048 baseline is a usable proxy for KV-cache size -- Ollama's
+   API doesn't expose that number directly.
+
+| ctx | auto tok/s | best num_gpu | best tok/s | gain vs auto | fixed(37) tok/s | inferred KV growth |
+|---|---|---|---|---|---|---|
+| 2048 | 12.70 | 37 | 16.64 | +31.0% | 15.22 | +0.0 GB |
+| 4096 | 12.96 | 37 | 16.55 | +27.7% | 16.12 | +0.29 GB |
+| 6144 | 12.07 | 33 | 14.02 | +16.2% | 14.42 | +0.60 GB |
+| 8192 | 11.64 | 33 | 13.98 | +20.2% | 16.46 | +0.91 GB |
+| 12288 | 10.11 | 41 | 13.70 | +35.5% | 13.93 | +1.54 GB |
+
+Full grids and raw JSON: `results/expC_context_sweep.jsonl`,
+`results/expC_context_sweep_summary.json`.
+
+**Finding 1 -- the gain over auto is robust across context length, not a
+4096-specific fluke.** Every context in the sweep beat auto by
+16-35%, with no trend toward the gain vanishing as context grows (12288
+is actually the largest gain in this sample). Ollama's auto placement
+gets *slower* as context grows (12.70 -> 10.11 tok/s, auto probably
+holding back layers to leave more room for the larger KV cache) while
+Ramer's chosen placement stays in a tight 13.7-16.6 tok/s band across the
+whole range -- the win holds because Ramer keeps re-optimizing for the
+actual budget instead of applying one static conservative margin.
+
+**Finding 2 -- KV-cache growth for this model was smooth, not a cliff by
+itself.** +1.54GB from 2048 to 12288 (6x the context) is gradual, in line
+with the VRAM math from Experiment B, and would never by itself have
+been surprising.
+
+**Finding 3 -- and yet the fixed-37 series never collapsed, even past the
+card's physical VRAM.** At ctx=12288 the fixed placement reported
+8.521GB of VRAM in use -- *above* this 8151MiB card's total capacity, the
+same kind of overflow that produced the 1.47 tok/s catastrophic collapse
+documented in the section above (same model, same num_gpu=37, at a
+smaller 8192 context that only reached 7.89GB). Here it just... didn't
+collapse: 13.93 tok/s, close to the ctx=2048 baseline. **This is the
+important negative result of this experiment**: crossing the physical
+VRAM ceiling is necessary but not sufficient to trigger the cliff --
+something else (external GPU load at the time, driver page-out timing,
+which pages get evicted) determines whether a given overflow is smooth
+degradation or a 5-10x collapse, and that something isn't captured by
+context length, VRAM headroom, or any other static number probed here.
+
+**What this settles and what it doesn't**: context-aware caching (keying
+placements by `num_ctx`) is still clearly correct -- it removes a
+placement that's flatly wrong for the current context, which is real and
+common. But this experiment shows it can't be sold as "prevents the
+cliff," because the cliff isn't a deterministic function of the inputs
+Ramer can see ahead of time. That's not a new finding so much as this
+project's second confirmation of it (the first was the earlier
+non-deterministic-collapse note on the parked placement-controller idea)
+-- but this time from a clean, designed sweep rather than an accidental
+observation. It reinforces that the *runtime* safety nets (`run`'s
+20-token quick-check, and `run_with_drift_watch`'s mid-generation
+detection) are doing real, load-bearing work and are not a redundant
+belt-and-suspenders on top of context-aware caching -- they're the only
+thing in this system that can actually catch the nondeterministic case,
+because nothing measured in advance predicts it reliably.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
