@@ -43,6 +43,20 @@ def _get(path: str) -> dict:
         return json.loads(resp.read())
 
 
+def _stream(path: str, payload: dict):
+    """Like _post, but yields each streamed JSON chunk as Ollama sends it,
+    tagged with the wall-clock time it arrived."""
+    req = urllib.request.Request(
+        f"{OLLAMA_HOST}{path}", data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=600) as resp:
+        for line in resp:
+            line = line.strip()
+            if not line:
+                continue
+            yield json.loads(line), time.time()
+
+
 def gpu_vram_mib() -> tuple[int, int]:
     out = subprocess.run(
         ["nvidia-smi", "--query-gpu=memory.total,memory.free", "--format=csv,noheader,nounits"],
@@ -237,14 +251,84 @@ def log_usage(**fields):
         f.write(json.dumps(fields) + "\n")
 
 
+DRIFT_WINDOW = 8       # tokens per rolling-rate sample
+DRIFT_WARMUP = 6        # ignore this many tokens at the start (prefill/startup noise, not decode speed)
+DRIFT_SUSTAIN = 3        # consecutive low windows required before calling it "sustained", not one noisy sample
+
+
+def run_with_drift_watch(model: str, num_gpu, prompt: str, cached_tps: float, num_predict: int | None = None) -> dict:
+    """Stream the real response instead of waiting for it as one blob --
+    lets the user see output immediately, and gives ground truth on
+    whether throughput held up over the WHOLE response, not just the
+    20-token quick-check before it started.
+
+    Motivated by an already-observed failure, not a hypothetical: a real
+    ~400-token response once measured 10.0 tok/s overall (worse than
+    Ollama's own auto placement) and the pre-flight quick-check hadn't
+    caught it -- a short check is a leading indicator, not a guarantee,
+    once a generation runs long enough for throughput to drift mid-flight.
+    This watches the actual token-arrival rate as it happens instead of
+    trusting a single upfront sample. It does not interrupt or reload
+    mid-response (that's a bigger, riskier intervention this project
+    deliberately isn't building yet, per the parked placement-controller
+    notes in PRODUCT_HYPOTHESES.md) -- it only detects and reports, then
+    flags the cached placement for a fresh probe next time."""
+    options = {"num_predict": num_predict} if num_predict else {}
+    if num_gpu != "auto":
+        options["num_gpu"] = num_gpu
+
+    timestamps = []
+    chunks = []
+    low_windows_in_a_row = 0
+    sustained_drift = False
+    worst_window_tps = None
+    final = {}
+
+    for chunk, t in _stream("/api/generate", {"model": model, "prompt": prompt, "stream": True, "options": options}):
+        if chunk.get("done"):
+            final = chunk
+            break
+        piece = chunk.get("response", "")
+        print(piece, end="", flush=True)
+        chunks.append(piece)
+        timestamps.append(t)
+
+        i = len(timestamps)
+        if i > DRIFT_WARMUP and i >= DRIFT_WINDOW:
+            span = timestamps[-1] - timestamps[-DRIFT_WINDOW]
+            window_tps = (DRIFT_WINDOW - 1) / span if span > 0 else float("inf")
+            if worst_window_tps is None or window_tps < worst_window_tps:
+                worst_window_tps = window_tps
+            if cached_tps > 0 and window_tps < cached_tps * QUICK_CHECK_REGRESSION_TOL:
+                low_windows_in_a_row += 1
+                if low_windows_in_a_row >= DRIFT_SUSTAIN:
+                    sustained_drift = True
+            else:
+                low_windows_in_a_row = 0
+    print()
+
+    eval_count = final.get("eval_count") or 0
+    eval_duration_ns = final.get("eval_duration") or 1
+    overall_tps = round(eval_count / (eval_duration_ns / 1e9), 2) if eval_count else 0.0
+
+    return dict(
+        response="".join(chunks), overall_tps=overall_tps,
+        worst_window_tps=round(worst_window_tps, 2) if worst_window_tps is not None else None,
+        sustained_drift=sustained_drift,
+    )
+
+
 def cmd_run(args):
     unload_others(args.model)  # a model left warm from a previous run competes with this one for VRAM -- see unload_others()
     digest = model_digest(args.model)
     key = cache_key(args.model, digest, args.num_predict)
     cache = load_cache()
-    freshly_probed = key not in cache or args.force
+    needs_reprobe = key in cache and cache[key].get("needs_reprobe")
+    freshly_probed = key not in cache or args.force or needs_reprobe
     if freshly_probed:
-        print(f"[ramer-local] {'re-' if key in cache else ''}probing before run...")
+        reason = "flagged by a prior sustained-drift detection" if needs_reprobe and not args.force else None
+        print(f"[ramer-local] {'re-' if key in cache else ''}probing before run"
+              + (f" ({reason})" if reason else "") + "...")
         result = probe(args.model, args.num_predict, PROBE_PROMPT)
         cache[key] = result
         save_cache(cache)
@@ -273,21 +357,21 @@ def cmd_run(args):
     prompt = " ".join(args.prompt) or PROBE_PROMPT
     print(f"[ramer-local] running {args.model} with num_gpu={num_gpu}...\n")
     unload(args.model)
-    options = {} if num_gpu == "auto" else {"num_gpu": num_gpu}
-    resp = _post("/api/generate", {
-        "model": args.model, "prompt": prompt, "stream": False,
-        "options": options,
-    })
-    print(resp.get("response", ""))
-    eval_count = resp.get("eval_count") or 0
-    eval_duration_ns = resp.get("eval_duration") or 1
-    ramer_tps = round(eval_count / (eval_duration_ns / 1e9), 2)
-    print(f"\n[ramer-local] {ramer_tps} tok/s")
+    watch = run_with_drift_watch(args.model, num_gpu, prompt, cached_tps)
+    print(f"\n[ramer-local] {watch['overall_tps']} tok/s"
+          + (f" (worst 8-token window: {watch['worst_window_tps']} tok/s)" if watch["worst_window_tps"] is not None else ""))
+
+    if watch["sustained_drift"]:
+        print(f"[ramer-local] throughput sustained below the expected rate partway through this response -- "
+              f"flagging num_gpu={num_gpu} for a fresh probe next time (a pre-flight check can't see drift "
+              f"that only shows up mid-generation).")
+        cache[key]["needs_reprobe"] = True
+        save_cache(cache)
 
     log_usage(
-        model=args.model, num_gpu=num_gpu, ramer_tok_s=ramer_tps,
+        model=args.model, num_gpu=num_gpu, ramer_tok_s=watch["overall_tps"],
+        worst_window_tok_s=watch["worst_window_tps"], sustained_drift=watch["sustained_drift"],
         auto_tok_s=result["auto"]["decode_tok_s"], stale=stale, freshly_probed=freshly_probed,
-        eval_count=eval_count,
     )
 
 
@@ -307,11 +391,15 @@ def cmd_show_log(args):
         print("[ramer-local] usage log is empty -- run `ramer_local.py run <model> ...` a few times first")
         return
     rows = [json.loads(line) for line in USAGE_LOG_PATH.read_text().splitlines() if line.strip()]
-    print(f"{'ts':<20} {'model':<28} {'num_gpu':>8} {'ramer tok/s':>12} {'auto tok/s':>11} {'gain':>7}  stale")
+    print(f"{'ts':<20} {'model':<28} {'num_gpu':>8} {'ramer tok/s':>12} {'worst window':>13} {'auto tok/s':>11} {'gain':>7}  flags")
     for r in rows:
         gain = f"{100 * (r['ramer_tok_s'] / r['auto_tok_s'] - 1):+.1f}%" if r.get("auto_tok_s") else "n/a"
+        flags = " ".join(f for f in [
+            "stale" if r.get("stale") else None,
+            "drift" if r.get("sustained_drift") else None,
+        ] if f)
         print(f"{r['ts']:<20} {r['model']:<28} {str(r['num_gpu']):>8} {r['ramer_tok_s']:>12} "
-              f"{r.get('auto_tok_s', 'n/a'):>11} {gain:>7}  {'yes' if r.get('stale') else ''}")
+              f"{r.get('worst_window_tok_s', 'n/a'):>13} {r.get('auto_tok_s', 'n/a'):>11} {gain:>7}  {flags}")
 
 
 def main():
