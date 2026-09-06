@@ -361,6 +361,57 @@ best under 3GB less headroom) -- that would need a fresh probe under the
 current conditions, which nothing does automatically, and still isn't
 being built, per the same discipline as the parked controller idea.
 
+## MoE expert placement: a bigger lever Ramer structurally cannot reach (2026-09-06)
+
+A r/LocalLLaMA thread ("What can you realistically do with 8GB VRAM in
+2026?") surfaced something more significant than general sentiment:
+multiple commenters described running MoE (Mixture-of-Experts) models --
+Gemma-4-26B-A4B, Qwen3.6-35B-A3B -- at genuinely usable speeds on 6-8GB
+cards by manually keeping attention/shared layers on GPU and routing
+routed-expert FFN weights to CPU, via **llama.cpp or LM Studio directly,
+not Ollama**. That's a structurally different lever than anything
+`ramer_local.py` does: it sweeps a single `num_gpu` (whole transformer
+*blocks*), which cannot distinguish "this tensor is touched by every
+token" (attention) from "this tensor is touched by ~1 in 5 tokens"
+(a routed expert) within the same block.
+
+Checked whether Ollama exposes this rather than assuming: **it doesn't.**
+Three independent confirmations: (1) Ollama's documented `/api/generate`
+options list has no expert-offload equivalent -- only the standard
+sampling params plus `num_gpu`/`num_ctx`/`num_batch`; (2) Ollama's own
+issue tracker has this as an **open, unimplemented feature request**
+([#11005](https://github.com/ollama/ollama/issues/11005), dynamic
+expert loading, claimed 50-90% potential VRAM reduction, no maintainer
+commitment); (3) **direct empirical test** -- pulled a real small MoE
+model (`granite3.1-moe:3b`, IBM Granite, 32 blocks, 40 experts/block, 8
+active) and swept `num_gpu` with `ramer_local.py probe`. VRAM scaled in
+perfectly smooth, linear 0.3-0.4GB steps per layer (0 -> 0.538 -> 0.872 ->
+1.215 -> 1.623 -> 2.032 -> 2.366 GB) -- identical in shape to every dense
+Qwen2.5 sweep earlier in this project. No discontinuity, no
+expert-awareness: Ollama moves whole blocks (all 40 experts included)
+per `num_gpu` step, exactly like a dense model.
+
+The underlying engine llama.cpp genuinely has the finer control the
+Reddit commenters were using -- `--n-cpu-moe N` (moves routed-expert FFN
+weights of the first N layers to CPU, keeps attention on GPU) and
+`--override-tensor` (regex-based per-tensor placement) are real, current,
+documented flags. **Ollama does not surface either through its API.**
+The Reddit commenters achieving the good results were bypassing Ollama
+specifically to get this.
+
+**What this means for Ramer, stated plainly**: the MoE lever is real and
+probably larger than the dense-model VRAM-ceiling gap Experiment B/V0
+already exploit -- but it is not reachable by tuning `ramer_local.py`
+harder. `ramer_local.py` is built entirely on Ollama's REST API
+(`/api/generate`, `/api/show`, `/api/ps`); closing this gap means driving
+a *different* engine process (raw `llama-server`/`llama-cli`) with a
+*different* flag Ollama doesn't expose -- not "sweep one more parameter,"
+a second backend integration. That is a materially bigger undertaking
+than anything built this session, and a real fork in what "Ramer"
+structurally is: an Ollama placement optimizer, or a
+get-the-most-out-of-your-GPU tool that happens to currently only speak to
+Ollama. Not started without an explicit decision to take that on.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
