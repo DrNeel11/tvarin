@@ -412,6 +412,23 @@ structurally is: an Ollama placement optimizer, or a
 get-the-most-out-of-your-GPU tool that happens to currently only speak to
 Ollama. Not started without an explicit decision to take that on.
 
+**Resolved (2026-09-06): named as the long-term vision, deliberately not
+started now.** The precise framing to carry forward: Ramer's real
+long-term shape isn't "the tool that finds the best `num_gpu`" -- it's
+**an automatic local-inference optimizer that decides which parts of a
+model belong in VRAM vs. RAM vs. other tiers, aware that different
+architectures (dense vs. MoE, and whatever comes after) need different
+placement strategies to get the most usable performance out of the
+hardware someone actually has.** `num_gpu` sweeping is this session's
+first, narrowest instance of that idea, not the whole of it -- MoE-aware
+placement would be a second, structurally different instance (a second
+backend, not a parameter). Explicit decision: **the immediate product
+stays narrow** (Ollama-API-driven, dense-model placement) until real
+customer demand validates the broader problem is worth solving --
+matching the discipline already established for the parked
+placement-controller idea. This vision statement is for later reference,
+not a roadmap being executed now.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
