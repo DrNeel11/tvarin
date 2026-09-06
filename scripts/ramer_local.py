@@ -106,11 +106,19 @@ def unload_others(target_model: str):
             unload(name)
 
 
-def measure(model: str, num_gpu: int | None, num_predict: int, prompt: str) -> dict:
+DEFAULT_NUM_CTX = 4096  # Ollama's own default context window
+
+
+def measure(model: str, num_gpu: int | None, num_predict: int, prompt: str, num_ctx: int = DEFAULT_NUM_CTX) -> dict:
     """One clean measurement: unload, then generate with an explicit (or
-    absent, for Ollama's own auto choice) num_gpu."""
+    absent, for Ollama's own auto choice) num_gpu, at a specific context
+    window. num_ctx is part of the measurement, not a detail: the KV cache
+    it reserves comes out of the same VRAM the layer split is competing
+    for. Seen directly -- a split probed at 4096 that ran at ~15 tok/s
+    dropped to 1.47 tok/s at 8192, because the doubled KV cache pushed
+    7.27GB of weights to 7.89GB total on an 8GB card, over the cliff."""
     unload(model)
-    options = {"num_predict": num_predict}
+    options = {"num_predict": num_predict, "num_ctx": num_ctx}
     if num_gpu is not None:
         options["num_gpu"] = num_gpu
     resp = _post("/api/generate", {"model": model, "prompt": prompt, "stream": False, "options": options})
@@ -128,7 +136,7 @@ def measure(model: str, num_gpu: int | None, num_predict: int, prompt: str) -> d
     )
 
 
-def safe_measure(model: str, num_gpu, num_predict: int, prompt: str) -> dict:
+def safe_measure(model: str, num_gpu, num_predict: int, prompt: str, num_ctx: int = DEFAULT_NUM_CTX) -> dict:
     """measure(), but a candidate that crashes Ollama server-side (observed
     directly: qwen2.5:32b-instruct at a high num_gpu returned HTTP 500 --
     server survived, that one request didn't) is data, not a reason to kill
@@ -136,20 +144,37 @@ def safe_measure(model: str, num_gpu, num_predict: int, prompt: str) -> dict:
     never picked as best, same treatment as a candidate that merely falls
     off the VRAM cliff."""
     try:
-        return dict(measure(model, num_gpu, num_predict, prompt), failed=False)
+        return dict(measure(model, num_gpu, num_predict, prompt, num_ctx), failed=False)
     except Exception as e:
         return dict(num_gpu=num_gpu, decode_tok_s=0.0, size_vram_gb=None, failed=True, error=str(e))
 
 
-def probe(model: str, num_predict: int, prompt: str, log=print) -> dict:
+NOISE_TOL = 0.03  # candidates within this fraction of the fastest are a statistical tie
+
+
+def pick_best(candidates: list) -> dict:
+    """Among candidates that are a tie on throughput, take the smallest
+    VRAM footprint. A raw argmax once chose num_gpu=41 at a reported
+    8.68GB (past this 8.15GB card's physical ceiling, i.e. already being
+    paged by the driver) over num_gpu=33 at 7.12GB -- because 41 measured
+    0.04 tok/s faster. That's noise buying a placement with zero headroom,
+    the exact configuration every drift/cliff failure this project has
+    seen comes from. Throughput you can't distinguish from noise isn't
+    worth headroom you can't spare."""
+    top = max(r["decode_tok_s"] for r in candidates)
+    tied = [r for r in candidates if r["decode_tok_s"] >= top * (1 - NOISE_TOL)]
+    return min(tied, key=lambda r: (r["size_vram_gb"] or 0.0))
+
+
+def probe(model: str, num_predict: int, prompt: str, num_ctx: int = DEFAULT_NUM_CTX, log=print) -> dict:
     n_layers = total_layers(model)
     unload(model)
     unload_others(model)  # a warm leftover model from a previous invocation would make this probe's own VRAM baseline wrong
     _, free_at_probe_mib = gpu_vram_mib()
     log(f"[ramer-local] {model}: {n_layers} transformer blocks, probing on {gpu_name()} "
-        f"({free_at_probe_mib} MiB free)...")
+        f"({free_at_probe_mib} MiB free) at num_ctx={num_ctx}...")
 
-    auto = measure(model, None, num_predict, prompt)
+    auto = measure(model, None, num_predict, prompt, num_ctx)
     log(f"  auto (Ollama default): {auto['decode_tok_s']} tok/s, {auto['size_vram_gb']} GB VRAM")
 
     # Ollama's num_gpu counts transformer blocks PLUS the output/embedding
@@ -164,7 +189,7 @@ def probe(model: str, num_predict: int, prompt: str, log=print) -> dict:
     grid = sorted({round(i * full / steps) for i in range(steps + 1)} | {full})
     results = [dict(auto, num_gpu="auto", failed=False)]
     for n in grid:
-        r = safe_measure(model, n, num_predict, prompt)
+        r = safe_measure(model, n, num_predict, prompt, num_ctx)
         results.append(r)
         if r["failed"]:
             log(f"  num_gpu={n:>3}: FAILED ({r['error']}) -- stopping sweep, higher splits won't recover")
@@ -172,7 +197,7 @@ def probe(model: str, num_predict: int, prompt: str, log=print) -> dict:
         log(f"  num_gpu={n:>3}: {r['decode_tok_s']:>7} tok/s, {r['size_vram_gb']:>6} GB VRAM")
 
     ok_results = [r for r in results if not r["failed"]]
-    best = max(ok_results, key=lambda r: r["decode_tok_s"])
+    best = max(ok_results, key=lambda r: r["decode_tok_s"])  # raw argmax: only used to decide WHERE to refine
     best_idx = grid.index(best["num_gpu"]) if best["num_gpu"] in grid else len(grid) - 1
 
     # one refinement pass: check the midpoint between the best grid point and
@@ -183,7 +208,7 @@ def probe(model: str, num_predict: int, prompt: str, log=print) -> dict:
     if best_idx + 1 < len(grid) and len(ok_results) == len(results):
         mid = (grid[best_idx] + grid[best_idx + 1]) // 2
         if mid not in grid:
-            r = safe_measure(model, mid, num_predict, prompt)
+            r = safe_measure(model, mid, num_predict, prompt, num_ctx)
             results.append(r)
             if r["failed"]:
                 log(f"  refine num_gpu={mid:>3}: FAILED ({r['error']})")
@@ -192,13 +217,15 @@ def probe(model: str, num_predict: int, prompt: str, log=print) -> dict:
             if not r["failed"] and r["decode_tok_s"] > best["decode_tok_s"]:
                 best = r
 
+    best = pick_best([r for r in results if not r["failed"]])
+
     if auto["decode_tok_s"] > 0:
         gain_pct = round(100 * (best["decode_tok_s"] / auto["decode_tok_s"] - 1), 1)
     else:
         gain_pct = None
 
     return dict(
-        model=model, n_layers=n_layers, num_predict=num_predict,
+        model=model, n_layers=n_layers, num_predict=num_predict, num_ctx=num_ctx,
         gpu=gpu_name(), auto=auto, grid_results=results, recommended=best, gain_over_auto_pct=gain_pct,
         free_vram_mib_at_probe=free_at_probe_mib,
     )
@@ -214,9 +241,15 @@ def save_cache(cache: dict):
     CACHE_PATH.write_text(json.dumps(cache, indent=2))
 
 
-def cache_key(model: str, digest: str, num_predict: int) -> str:
+def cache_key(model: str, digest: str, num_predict: int, num_ctx: int = DEFAULT_NUM_CTX) -> str:
+    # num_ctx is in the key on purpose: a split that's optimal at one
+    # context window can be over the cliff at a larger one (the KV cache
+    # grows with it, out of the same VRAM). Entries from before this was
+    # keyed simply stop matching and get re-probed once -- cheap, and
+    # safer than silently reusing a placement measured under different
+    # memory pressure.
     total_mib, _ = gpu_vram_mib()
-    return f"{model}|{digest}|{gpu_name()}|{total_mib}mib|np{num_predict}"
+    return f"{model}|{digest}|{gpu_name()}|{total_mib}mib|np{num_predict}|ctx{num_ctx}"
 
 
 PROBE_PROMPT = "Explain the concept of gradient descent in machine learning, covering the intuition, the update rule, and common pitfalls."
@@ -224,14 +257,14 @@ PROBE_PROMPT = "Explain the concept of gradient descent in machine learning, cov
 
 def cmd_probe(args):
     digest = model_digest(args.model)
-    key = cache_key(args.model, digest, args.num_predict)
+    key = cache_key(args.model, digest, args.num_predict, args.num_ctx)
     cache = load_cache()
     if key in cache and not args.force:
         print(f"[ramer-local] cached result for {key}:")
         print(json.dumps(cache[key], indent=2))
         print("\n(use --force to re-probe)")
         return
-    result = probe(args.model, args.num_predict, PROBE_PROMPT)
+    result = probe(args.model, args.num_predict, PROBE_PROMPT, num_ctx=args.num_ctx)
     cache[key] = result
     save_cache(cache)
     print(f"\n[ramer-local] recommended num_gpu={result['recommended']['num_gpu']} "
@@ -256,7 +289,8 @@ DRIFT_WARMUP = 6        # ignore this many tokens at the start (prefill/startup 
 DRIFT_SUSTAIN = 3        # consecutive low windows required before calling it "sustained", not one noisy sample
 
 
-def run_with_drift_watch(model: str, num_gpu, prompt: str, cached_tps: float, num_predict: int | None = None) -> dict:
+def run_with_drift_watch(model: str, num_gpu, prompt: str, cached_tps: float, num_predict: int | None = None,
+                         num_ctx: int = DEFAULT_NUM_CTX) -> dict:
     """Stream the real response instead of waiting for it as one blob --
     lets the user see output immediately, and gives ground truth on
     whether throughput held up over the WHOLE response, not just the
@@ -274,6 +308,7 @@ def run_with_drift_watch(model: str, num_gpu, prompt: str, cached_tps: float, nu
     notes in PRODUCT_HYPOTHESES.md) -- it only detects and reports, then
     flags the cached placement for a fresh probe next time."""
     options = {"num_predict": num_predict} if num_predict else {}
+    options["num_ctx"] = num_ctx
     if num_gpu != "auto":
         options["num_gpu"] = num_gpu
 
@@ -321,7 +356,7 @@ def run_with_drift_watch(model: str, num_gpu, prompt: str, cached_tps: float, nu
 def cmd_run(args):
     unload_others(args.model)  # a model left warm from a previous run competes with this one for VRAM -- see unload_others()
     digest = model_digest(args.model)
-    key = cache_key(args.model, digest, args.num_predict)
+    key = cache_key(args.model, digest, args.num_predict, args.num_ctx)
     cache = load_cache()
     needs_reprobe = key in cache and cache[key].get("needs_reprobe")
     freshly_probed = key not in cache or args.force or needs_reprobe
@@ -329,7 +364,7 @@ def cmd_run(args):
         reason = "flagged by a prior sustained-drift detection" if needs_reprobe and not args.force else None
         print(f"[ramer-local] {'re-' if key in cache else ''}probing before run"
               + (f" ({reason})" if reason else "") + "...")
-        result = probe(args.model, args.num_predict, PROBE_PROMPT)
+        result = probe(args.model, args.num_predict, PROBE_PROMPT, num_ctx=args.num_ctx)
         cache[key] = result
         save_cache(cache)
     else:
@@ -346,7 +381,7 @@ def cmd_run(args):
     # doesn't need to be identified, only detected) rather than inferring
     # staleness from free-VRAM alone.
     if not freshly_probed and num_gpu not in ("auto", None):
-        check = measure(args.model, num_gpu, QUICK_CHECK_PREDICT, PROBE_PROMPT)
+        check = measure(args.model, num_gpu, QUICK_CHECK_PREDICT, PROBE_PROMPT, args.num_ctx)
         if cached_tps > 0 and check["decode_tok_s"] < cached_tps * QUICK_CHECK_REGRESSION_TOL:
             print(f"[ramer-local] cached split (num_gpu={num_gpu}) now measures {check['decode_tok_s']} tok/s, "
                   f"down from {cached_tps} tok/s at probe time -- likely past the cliff now. "
@@ -355,9 +390,9 @@ def cmd_run(args):
             stale = True
 
     prompt = " ".join(args.prompt) or PROBE_PROMPT
-    print(f"[ramer-local] running {args.model} with num_gpu={num_gpu}...\n")
+    print(f"[ramer-local] running {args.model} with num_gpu={num_gpu} at num_ctx={args.num_ctx}...\n")
     unload(args.model)
-    watch = run_with_drift_watch(args.model, num_gpu, prompt, cached_tps)
+    watch = run_with_drift_watch(args.model, num_gpu, prompt, cached_tps, num_ctx=args.num_ctx)
     print(f"\n[ramer-local] {watch['overall_tps']} tok/s"
           + (f" (worst 8-token window: {watch['worst_window_tps']} tok/s)" if watch["worst_window_tps"] is not None else ""))
 
@@ -409,6 +444,9 @@ def main():
     p_probe = sub.add_parser("probe", help="sweep num_gpu and cache the best split for a model")
     p_probe.add_argument("model")
     p_probe.add_argument("--num-predict", type=int, default=40)
+    p_probe.add_argument("--num-ctx", type=int, default=DEFAULT_NUM_CTX,
+                          help="context window to probe at. A placement is only valid at the context it was "
+                               "measured at -- the KV cache grows with num_ctx and comes out of the same VRAM.")
     p_probe.add_argument("--force", action="store_true", help="re-probe even if cached")
     p_probe.set_defaults(func=cmd_probe)
 
@@ -416,6 +454,7 @@ def main():
     p_run.add_argument("model")
     p_run.add_argument("prompt", nargs="*")
     p_run.add_argument("--num-predict", type=int, default=40, help="must match the value used for probing to hit the cache")
+    p_run.add_argument("--num-ctx", type=int, default=DEFAULT_NUM_CTX, help="context window; must match the probe to hit the cache")
     p_run.add_argument("--force", action="store_true", help="re-probe even if cached")
     p_run.set_defaults(func=cmd_run)
 

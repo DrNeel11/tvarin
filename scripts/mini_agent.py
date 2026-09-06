@@ -158,30 +158,83 @@ TOOL_FUNCS = {
 }
 
 
-def ramers_num_gpu(model: str) -> object:
-    """Reuse ramer_local.py's cache if this model has already been probed
-    on this machine -- don't trigger a probe here, that's a separate,
-    explicit step."""
+def ramers_num_gpu(model: str, num_ctx: int) -> object:
+    """Reuse ramer_local.py's cache if this model has been probed on this
+    machine AT THIS CONTEXT WINDOW -- don't trigger a probe here, that's a
+    separate, explicit step. The context match is not optional: a split
+    probed at 4096 and reused at 8192 went from ~15 tok/s to 1.47 tok/s
+    here, because the doubled KV cache pushed it over the VRAM cliff.
+    No entry for this num_ctx means Ollama's auto placement, which does
+    account for KV cache size on its own."""
     digest = model_digest(model)
-    key = cache_key(model, digest, 40)  # 40 matches ramer_local.py's own default --num-predict
+    key = cache_key(model, digest, 40, num_ctx)  # 40 matches ramer_local.py's own default --num-predict
     cache = load_cache()
     if key in cache:
         return cache[key]["recommended"]["num_gpu"]
     return "auto"
 
 
-def chat(model: str, messages: list, num_gpu) -> dict:
-    options = {} if num_gpu == "auto" else {"num_gpu": num_gpu}
+def chat(model: str, messages: list, num_gpu, num_ctx: int) -> dict:
+    """Streams the response. Found the hard way on a real project: a step
+    that reads two source files then writes a full rewritten one can run
+    for minutes at ~10 tok/s, and with stream:false that was minutes of
+    total silence -- indistinguishable from a hang -- followed by a
+    300s urllib timeout killing a perfectly healthy generation. Streaming
+    fixes both: text shows up as it's produced, a token counter ticks
+    while the model works on a tool call (whose JSON isn't worth
+    streaming to a terminal), and the socket timeout now bounds the gap
+    *between* tokens, so a real stall is still caught but a long answer
+    isn't."""
+    options = {"num_ctx": num_ctx}
+    if num_gpu != "auto":
+        options["num_gpu"] = num_gpu
     req = urllib.request.Request(
         f"{OLLAMA_HOST}/api/chat",
-        data=json.dumps({"model": model, "messages": messages, "tools": TOOLS, "stream": False, "options": options}).encode(),
+        data=json.dumps({"model": model, "messages": messages, "tools": TOOLS, "stream": True, "options": options}).encode(),
         headers={"Content-Type": "application/json"},
     )
     t0 = time.time()
+    content_parts = []
+    tool_calls = []
+    final = {}
+    n_chunks = 0
+    last_progress = 0.0
+    showing_progress = False
     with urllib.request.urlopen(req, timeout=300) as resp:
-        body = json.loads(resp.read())
-    body["_wall_s"] = round(time.time() - t0, 2)
-    return body
+        for line in resp:
+            line = line.strip()
+            if not line:
+                continue
+            chunk = json.loads(line)
+            n_chunks += 1
+            msg = chunk.get("message", {})
+            delta = msg.get("content", "")
+            if msg.get("tool_calls"):
+                tool_calls.extend(msg["tool_calls"])
+            if delta:
+                if showing_progress:
+                    print("\r" + " " * 60 + "\r", end="", flush=True)
+                    showing_progress = False
+                print(delta, end="", flush=True)
+                content_parts.append(delta)
+            elif time.time() - last_progress > 1.0:
+                # nothing printable yet (model is mid tool-call) -- keep proving it's alive
+                print(f"\r  ... working ({n_chunks} tokens, {time.time() - t0:.0f}s)", end="", flush=True)
+                showing_progress = True
+                last_progress = time.time()
+            if chunk.get("done"):
+                final = chunk
+                break
+    if showing_progress:
+        print("\r" + " " * 60 + "\r", end="", flush=True)
+    if content_parts:
+        print()
+    message = {"role": "assistant", "content": "".join(content_parts)}
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+    final["message"] = message
+    final["_wall_s"] = round(time.time() - t0, 2)
+    return final
 
 
 SESSION_LOG_PATH = REPO_ROOT / "mini_agent_sessions.jsonl"
@@ -199,6 +252,10 @@ def main():
                          help="real project directory to operate in, e.g. your VS Code workspace folder "
                               "(pass '.' to use the current directory). Defaults to the throwaway agent_sandbox/ "
                               "next to this repo. All file/command tools stay confined to this directory.")
+    parser.add_argument("--num-ctx", type=int, default=8192,
+                         help="context window in tokens. Ollama's default of 4096 is too small once real source "
+                              "files get read into the conversation -- past it, Ollama silently drops the OLDEST "
+                              "content, i.e. the system prompt and your task. Bigger costs VRAM for KV cache.")
     cli_args = parser.parse_args()
     model = cli_args.model
     task = " ".join(cli_args.task)
@@ -211,14 +268,19 @@ def main():
     else:
         SANDBOX.mkdir(exist_ok=True)
 
+    num_ctx = cli_args.num_ctx
     if cli_args.num_gpu is not None:
         num_gpu = "auto" if cli_args.num_gpu == "auto" else int(cli_args.num_gpu)
         placement_label = f"forced --num-gpu={num_gpu}"
     else:
-        num_gpu = ramers_num_gpu(model)
-        placement_label = "Ramer-optimized" if num_gpu != "auto" else "Ollama auto -- not probed yet, run ramer_local.py probe first for Ramer placement"
+        num_gpu = ramers_num_gpu(model, num_ctx)
+        if num_gpu != "auto":
+            placement_label = f"Ramer-optimized, probed at num_ctx={num_ctx}"
+        else:
+            placement_label = (f"Ollama auto -- no Ramer placement probed at num_ctx={num_ctx}; run "
+                               f"`ramer_local.py probe {model} --num-ctx {num_ctx}` to get one")
 
-    print(f"[agent] model={model}  num_gpu={num_gpu} ({placement_label})")
+    print(f"[agent] model={model}  num_gpu={num_gpu} ({placement_label})  num_ctx={num_ctx}")
     print(f"[agent] sandbox: {SANDBOX}")
     print(f"[agent] task: {task}\n")
 
@@ -239,10 +301,11 @@ def main():
             wall_s=resp.get("_wall_s"),
         ))
 
-    def finish(final_content: str, steps_taken: int):
+    def finish(final_content: str, steps_taken: int, already_streamed: bool = True):
         session_wall_s = round(sum(t["wall_s"] for t in turns), 2)
-        print(f"\n[agent] done after {steps_taken} step(s), {len(turns)} model call(s), {session_wall_s}s total model time:\n")
-        print(final_content.strip())
+        print(f"\n[agent] done after {steps_taken} step(s), {len(turns)} model call(s), {session_wall_s}s total model time.")
+        if not already_streamed:
+            print(f"\n{final_content.strip()}")
         print(f"\n[agent] per-call trend (prompt size grows as the session goes on):")
         print(f"  {'call':>4} {'prompt tok':>10} {'gen tok':>7} {'tok/s':>7} {'wall s':>7}")
         for t in turns:
@@ -254,10 +317,15 @@ def main():
             )) + "\n")
 
     for step in range(1, MAX_STEPS + 1):
-        resp = chat(model, messages, num_gpu)
+        resp = chat(model, messages, num_gpu, num_ctx)
         record_turn(resp)
         msg = resp.get("message", {})
         messages.append(msg)
+
+        used = resp.get("prompt_eval_count") or 0
+        if used > 0.85 * num_ctx:
+            print(f"[agent] warning: conversation is at {used}/{num_ctx} context tokens -- past the limit Ollama "
+                  f"silently drops the oldest messages (the task itself). Re-run with a larger --num-ctx if this keeps going.")
 
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
@@ -286,7 +354,7 @@ def main():
             print(f"          -> {preview}\n")
             messages.append({"role": "tool", "content": result})
 
-    finish("(stopped: no final answer after the step limit -- likely stuck in a loop)", MAX_STEPS)
+    finish("(stopped: no final answer after the step limit -- likely stuck in a loop)", MAX_STEPS, already_streamed=False)
 
 
 if __name__ == "__main__":

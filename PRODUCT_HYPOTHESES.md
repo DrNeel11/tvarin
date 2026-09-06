@@ -532,6 +532,69 @@ first pass is left in this document rather than deleted, because getting
 caught, corrected, and rewritten in the open is more useful here than a
 clean-looking record.
 
+## Context-aware placement: from parked idea to real failure, fix, and validation (2026-09-06)
+
+The "optimal allocation isn't just weights-on-GPU, it's weights *and*
+KV cache for the actual workload" thesis recorded under the long-term
+vision stopped being hypothetical the first time `mini_agent.py` was
+used on a real project. Chain of events, all in one sitting:
+
+1. **Real use surfaced a real UX bug.** Pointed at `D:\fl_ai` (a real
+   FL Studio mixing-agent codebase), the agent read two source files
+   then went silent for minutes while generating a full rewritten file at
+   ~10 tok/s -- indistinguishable from a hang, and a 300s urllib timeout
+   was killing exactly this kind of healthy long generation (an earlier
+   "timeout" wrongly blamed on GPU contention was almost certainly this).
+   Fixed by streaming `/api/chat` (text appears live, a token counter
+   ticks during tool-call generation, and the timeout now bounds gaps
+   *between* tokens, not the whole response).
+2. **Reading real files needs more context than Ollama's 4096 default**
+   -- past it, Ollama silently drops the *oldest* messages, i.e. the
+   system prompt and the task itself. Added `--num-ctx` (default 8192 for
+   the agent) plus a warning at 85% of the window.
+3. **The larger context immediately broke the placement.** First run at
+   8192 with the cached `num_gpu=37` (probed at 4096): call 1 at 8.71
+   tok/s, call 2 at **1.47 tok/s** -- deep cliff. Diagnosis confirmed by
+   measurement, not inference: at 4096 that split occupies 7.27GB; at
+   8192 it occupies **7.89GB** (`/api/ps`), nvidia-smi at 7787/8151 MiB --
+   the +0.62GB is the doubled KV cache, and it lands the split past the
+   ~7.76GB usable ceiling Experiment B identified. The VRAM math from
+   the original research predicted this exactly.
+4. **Fix: a placement is only valid at the context it was probed at.**
+   `ramer_local.py` now takes `--num-ctx` for both `probe` and `run`,
+   passes it into every measurement, and includes it in the cache key --
+   so a split measured under one memory pressure can never be silently
+   reused under another. `mini_agent.py` looks up the placement for *its*
+   `num_ctx` and falls back to Ollama's auto (which does account for KV
+   cache) with a hint when none exists. Older cache entries simply stop
+   matching and get re-probed once.
+5. **The context-aware probe found the right answer -- then exposed a
+   flaw in how the winner was picked.** At 8192 the sweep correctly found
+   fewer layers fit: `num_gpu=33` at 7.116GB, +23.5% over auto. But the
+   first run's raw argmax chose `num_gpu=41` at a *reported 8.68GB* --
+   past the card's physical VRAM, already being paged -- because it
+   measured 0.04 tok/s faster than 33. Noise buying a zero-headroom
+   placement, the exact configuration every drift/cliff failure this
+   project has seen comes from. Added a headroom-aware tiebreak
+   (`pick_best`): among candidates within 3% of the fastest, take the
+   smallest VRAM footprint. Verified offline against the identical grid
+   data (now selects 33), then by a real `--force` re-probe.
+6. **Before/after on the identical task at 8192**: stale placement 8.71 /
+   **1.47** tok/s, 85.9s total; context-matched placement 12.51 / **12.09**
+   tok/s, 24.1s total. 3.6x overall, 8x on the call that had cratered.
+
+**What this settles**: context-aware placement is not a future feature,
+it is a correctness requirement -- a placement tuned without regard to
+the context window is *wrong*, not merely suboptimal, and the failure
+mode is a 5-8x throughput collapse that shows up the moment a real
+workload (an agent reading real files) needs a real context window. The
+gain over auto is smaller at 8192 (+23.5%) than at 4096 (+61%) because
+the KV cache leaves less slack to reclaim -- honest, and consistent with
+the original thesis that the budget is shared. The tiebreak rule
+generalizes beyond this case: with measurement noise of a few percent
+and a cliff this sharp, preferring headroom on ties is the right default
+everywhere, not just at large contexts.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
