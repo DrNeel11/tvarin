@@ -460,59 +460,77 @@ fixed yet, consistent with the "observe before building" discipline --
 worth doing if agentic workloads become the primary use case, not
 before.
 
-## The placement gap nearly vanishes under real agentic (tool-calling) load (2026-09-06)
+## The placement gap under real agentic (tool-calling) load -- corrected (2026-09-06)
 
-Ran the actual experiment this was building toward: the identical
+**First pass (superseded below, kept for the record).** Ran the identical
 non-trivial multi-file task (build a CLI todo app + tests, run them, fix
 a real failure until clean) through `mini_agent.py` twice on
-`qwen2.5:14b-instruct` -- once forced to `num_gpu=37` (Experiment B's
-validated optimum), once forced to `num_gpu=auto` (Ollama's default) --
-to see whether the 61% gap found on a simple completion prompt survives
-a real, growing-context, tool-calling session.
+`qwen2.5:14b-instruct` -- once forced to `num_gpu=37`, once `num_gpu=auto`
+-- to see whether the 61% single-shot gap survives a real tool-calling
+session. Both trials landed at ~10.5-11 tok/s per call, within noise of
+each other, and were written up as "the gap mostly vanishes under
+agentic load," with a hypothesis that `/api/chat` itself was inherently
+slower than `/api/generate`.
 
-**It mostly doesn't.** Both trials took 3 model calls to finish
-correctly (todo.py + test_todo.py, hit a real test assertion bug, fixed
-it, confirmed clean). Per-call decode throughput:
+**That conclusion was wrong, and the investigation that found the error
+is the more important result.** Asked directly to "find and help make
+this better," went back and tested each suspected mechanism *properly*
+-- with repeated trials and controlled, matched inputs, not single
+one-off comparisons (the exact mistake this project has caught itself
+making before, e.g. the original 20-token quick-check calibration
+issue). Findings, in the order tested:
 
-| call | num_gpu=37 | num_gpu=auto |
-|---|---:|---:|
-| 1 | 10.57 tok/s | 10.71 tok/s |
-| 2 | 10.92 tok/s | 10.47 tok/s |
-| 3 | 10.99 tok/s | 10.93 tok/s |
+1. **`/api/chat` vs `/api/generate`, repeated 3x each, identical prompt,
+   fresh-unloaded before every call: 15.7-15.9 tok/s both ways.** No real
+   difference. The original "12.8 vs 19.6" comparison was two single
+   samples taken under different, unmeasured conditions -- ordinary
+   session-to-session variance (already documented extensively this
+   project), not an endpoint effect.
+2. **Tools present but not called, repeated 3x: 15.4-15.5 tok/s.** A
+   trivial ~2-3% dip from the larger serialized tools schema in the
+   prompt, not the mechanism.
+3. **An actual tool call generated, repeated 3x: 15.9-16.1 tok/s.** No
+   slowdown at all -- if anything slightly faster (noise).
+4. **A long (~970-token) prior context, single flat message, repeated
+   3x: 14.35-14.47 tok/s.** A real, modest, reproducible ~10% decline
+   from context size alone -- attention cost during decode genuinely
+   scales with how much is already cached. Confirmed again independently
+   by re-running the original agent task a second time: 14.24 tok/s at a
+   541-token prompt declined smoothly to 10.5 tok/s at 4062 tokens,
+   right at the 4096 default `num_ctx` ceiling.
+5. **The decisive test: a controlled 2 (context size) x 2 (placement) x
+   2 (repeat) grid, using fixed synthetic context (not model-driven, so
+   both conditions see byte-identical input) instead of letting the
+   model's own unpredictable conversation shape the comparison:**
 
-Within noise of each other. The dramatic placement win from Experiment
-B/V0 -- 19.6 vs 12.2 tok/s on a plain single-shot prompt -- compressed to
-nothing meaningful once real tool-calling entered the picture.
+   | context | num_gpu=37 | num_gpu=auto | gap |
+   |---|---:|---:|---:|
+   | small (229 tok) | 15.12, 15.24 | 11.91, 11.73 | **+28%** |
+   | large (2115 tok) | 13.21, 13.17 | 9.57, 9.64 | **+37%** |
 
-**Isolated why, as far as a reasonable amount of follow-up testing could
-tell -- reported honestly rather than over-claiming a fully diagnosed
-cause.** Confirmed directly: (1) `num_gpu=37` still applies correctly in
-chat/tool mode (VRAM measured at 7.273GB, identical to completion mode --
-not a placement bug); (2) `/api/chat` itself is measurably slower than
-`/api/generate` at the *identical* `num_gpu` (12.8-13.6 vs 19.6 tok/s on
-a single fresh call) -- a real, distinct cost of the chat/tool-calling
-code path, independent of GPU/CPU placement entirely; (3) a single
-tool-call-generation sample (14.11 tok/s, only 21 tokens) was too small
-to say whether generating an actual tool call is slower still than free
-text -- inconclusive, not reported as confirmed either way. What's NOT
-isolated: whether the further drop from ~13 tok/s (fresh single-turn
-chat) to ~10.5 tok/s (real multi-turn session) comes from tool-call
-generation specifically, from reprocessing a growing conversation each
-turn, or both.
+   Clean, non-overlapping, reproduced twice at each cell. **The
+   placement gap is real, substantial, and does not shrink with
+   context -- it holds at roughly 30-40% at both sizes tested,** while
+   context growth (item 4 above) slows *both* placements down by a
+   similar relative amount without closing the gap between them.
 
-**Why this matters more than any single number**: this is exactly the
-"kill or validate" result the whole coding-agent detour was for. If
-Ramer's product story becomes "makes your local coding agent faster,"
-this result says that story doesn't currently hold -- something about
-the chat/tool-calling code path itself, not GPU/CPU placement, is the
-binding constraint at this workload, and it swamps the exact lever
-Ramer optimizes. The placement win is real and reproducible for
-single-shot completions (confirmed repeatedly this session); it is not
-yet shown to transfer to agentic tool-calling workloads, which is the
-more compelling product framing that prompted this whole test. If
-agentic workloads become the target use case, the next question isn't
-"tune num_gpu better" -- it's "why is /api/chat slower than /api/generate
-at the same placement, and does that dominate everything else."
+**Corrected conclusion, replacing the "mostly vanishes" claim above**:
+the original `mini_agent.py` A/B (3 calls each, model-driven trajectory)
+was underpowered and likely confounded by ordinary session variance or
+something specific to that one real run (actual file I/O and subprocess
+execution happening between LLM calls, unlike the pure-chat controlled
+tests) -- not evidence that chat/tool-calling itself defeats the
+placement win. The controlled, repeated, matched-input testing says the
+opposite: **Ramer's placement optimization does transfer to real
+chat/tool-calling workloads, gap intact.** What's actually confirmed to
+matter independently is context-length-driven decode slowdown (a
+real, separate, smaller effect, affecting all placements alike) -- worth
+keeping in mind for future work on context/KV-cache-aware placement, per
+the long-term vision already recorded above, but it is not the
+"agentic workloads defeat Ramer" story the first pass reported. That
+first pass is left in this document rather than deleted, because getting
+caught, corrected, and rewritten in the open is more useful here than a
+clean-looking record.
 
 ## Findings from public research (2026-09-03, not interviews)
 
