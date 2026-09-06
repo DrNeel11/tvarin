@@ -24,9 +24,11 @@ Usage:
     python scripts/mini_agent.py qwen2.5:14b-instruct "Create hello.py that prints Hello World, then run it."
 """
 
+import argparse
 import json
 import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -171,19 +173,35 @@ def chat(model: str, messages: list, num_gpu) -> dict:
         data=json.dumps({"model": model, "messages": messages, "tools": TOOLS, "stream": False, "options": options}).encode(),
         headers={"Content-Type": "application/json"},
     )
+    t0 = time.time()
     with urllib.request.urlopen(req, timeout=300) as resp:
-        return json.loads(resp.read())
+        body = json.loads(resp.read())
+    body["_wall_s"] = round(time.time() - t0, 2)
+    return body
+
+
+SESSION_LOG_PATH = REPO_ROOT / "mini_agent_sessions.jsonl"
 
 
 def main():
-    if len(sys.argv) < 3:
-        print(__doc__)
-        sys.exit(1)
-    model = sys.argv[1]
-    task = " ".join(sys.argv[2:])
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("model")
+    parser.add_argument("task", nargs="+")
+    parser.add_argument("--num-gpu", type=str, default=None,
+                         help="override the placement instead of using ramer_local.py's cache -- "
+                              "an int, or 'auto' for Ollama's own default. For A/B comparing placements on the identical task.")
+    cli_args = parser.parse_args()
+    model = cli_args.model
+    task = " ".join(cli_args.task)
 
-    num_gpu = ramers_num_gpu(model)
-    print(f"[agent] model={model}  num_gpu={num_gpu} ({'Ramer-optimized' if num_gpu != 'auto' else 'Ollama auto -- not probed yet, run ramer_local.py probe first for Ramer placement'})")
+    if cli_args.num_gpu is not None:
+        num_gpu = "auto" if cli_args.num_gpu == "auto" else int(cli_args.num_gpu)
+        placement_label = f"forced --num-gpu={num_gpu}"
+    else:
+        num_gpu = ramers_num_gpu(model)
+        placement_label = "Ramer-optimized" if num_gpu != "auto" else "Ollama auto -- not probed yet, run ramer_local.py probe first for Ramer placement"
+
+    print(f"[agent] model={model}  num_gpu={num_gpu} ({placement_label})")
     print(f"[agent] sandbox: {SANDBOX}")
     print(f"[agent] task: {task}\n")
 
@@ -191,16 +209,42 @@ def main():
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": task},
     ]
+    turns = []  # per-model-call stats, to see how throughput/context trend over a long session
+
+    def record_turn(resp: dict):
+        eval_count = resp.get("eval_count") or 0
+        eval_duration_ns = resp.get("eval_duration") or 1
+        turns.append(dict(
+            turn=len(turns) + 1,
+            prompt_eval_count=resp.get("prompt_eval_count", 0),
+            eval_count=eval_count,
+            tok_s=round(eval_count / (eval_duration_ns / 1e9), 2) if eval_count else 0.0,
+            wall_s=resp.get("_wall_s"),
+        ))
+
+    def finish(final_content: str, steps_taken: int):
+        session_wall_s = round(sum(t["wall_s"] for t in turns), 2)
+        print(f"\n[agent] done after {steps_taken} step(s), {len(turns)} model call(s), {session_wall_s}s total model time:\n")
+        print(final_content.strip())
+        print(f"\n[agent] per-call trend (prompt size grows as the session goes on):")
+        print(f"  {'call':>4} {'prompt tok':>10} {'gen tok':>7} {'tok/s':>7} {'wall s':>7}")
+        for t in turns:
+            print(f"  {t['turn']:>4} {t['prompt_eval_count']:>10} {t['eval_count']:>7} {t['tok_s']:>7} {t['wall_s']:>7}")
+        with open(SESSION_LOG_PATH, "a") as f:
+            f.write(json.dumps(dict(
+                ts=time.strftime("%Y-%m-%dT%H:%M:%S"), model=model, num_gpu=num_gpu, task=task,
+                steps=steps_taken, turns=turns, session_wall_s=session_wall_s,
+            )) + "\n")
 
     for step in range(1, MAX_STEPS + 1):
         resp = chat(model, messages, num_gpu)
+        record_turn(resp)
         msg = resp.get("message", {})
         messages.append(msg)
 
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
-            print(f"[agent] done after {step} step(s):\n")
-            print(msg.get("content", "").strip())
+            finish(msg.get("content", ""), step)
             return
 
         for call in tool_calls:
@@ -225,7 +269,7 @@ def main():
             print(f"          -> {preview}\n")
             messages.append({"role": "tool", "content": result})
 
-    print(f"[agent] stopped after {MAX_STEPS} steps without a final answer -- likely stuck in a loop.")
+    finish("(stopped: no final answer after the step limit -- likely stuck in a loop)", MAX_STEPS)
 
 
 if __name__ == "__main__":

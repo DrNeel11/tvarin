@@ -460,6 +460,60 @@ fixed yet, consistent with the "observe before building" discipline --
 worth doing if agentic workloads become the primary use case, not
 before.
 
+## The placement gap nearly vanishes under real agentic (tool-calling) load (2026-09-06)
+
+Ran the actual experiment this was building toward: the identical
+non-trivial multi-file task (build a CLI todo app + tests, run them, fix
+a real failure until clean) through `mini_agent.py` twice on
+`qwen2.5:14b-instruct` -- once forced to `num_gpu=37` (Experiment B's
+validated optimum), once forced to `num_gpu=auto` (Ollama's default) --
+to see whether the 61% gap found on a simple completion prompt survives
+a real, growing-context, tool-calling session.
+
+**It mostly doesn't.** Both trials took 3 model calls to finish
+correctly (todo.py + test_todo.py, hit a real test assertion bug, fixed
+it, confirmed clean). Per-call decode throughput:
+
+| call | num_gpu=37 | num_gpu=auto |
+|---|---:|---:|
+| 1 | 10.57 tok/s | 10.71 tok/s |
+| 2 | 10.92 tok/s | 10.47 tok/s |
+| 3 | 10.99 tok/s | 10.93 tok/s |
+
+Within noise of each other. The dramatic placement win from Experiment
+B/V0 -- 19.6 vs 12.2 tok/s on a plain single-shot prompt -- compressed to
+nothing meaningful once real tool-calling entered the picture.
+
+**Isolated why, as far as a reasonable amount of follow-up testing could
+tell -- reported honestly rather than over-claiming a fully diagnosed
+cause.** Confirmed directly: (1) `num_gpu=37` still applies correctly in
+chat/tool mode (VRAM measured at 7.273GB, identical to completion mode --
+not a placement bug); (2) `/api/chat` itself is measurably slower than
+`/api/generate` at the *identical* `num_gpu` (12.8-13.6 vs 19.6 tok/s on
+a single fresh call) -- a real, distinct cost of the chat/tool-calling
+code path, independent of GPU/CPU placement entirely; (3) a single
+tool-call-generation sample (14.11 tok/s, only 21 tokens) was too small
+to say whether generating an actual tool call is slower still than free
+text -- inconclusive, not reported as confirmed either way. What's NOT
+isolated: whether the further drop from ~13 tok/s (fresh single-turn
+chat) to ~10.5 tok/s (real multi-turn session) comes from tool-call
+generation specifically, from reprocessing a growing conversation each
+turn, or both.
+
+**Why this matters more than any single number**: this is exactly the
+"kill or validate" result the whole coding-agent detour was for. If
+Ramer's product story becomes "makes your local coding agent faster,"
+this result says that story doesn't currently hold -- something about
+the chat/tool-calling code path itself, not GPU/CPU placement, is the
+binding constraint at this workload, and it swamps the exact lever
+Ramer optimizes. The placement win is real and reproducible for
+single-shot completions (confirmed repeatedly this session); it is not
+yet shown to transfer to agentic tool-calling workloads, which is the
+more compelling product framing that prompted this whole test. If
+agentic workloads become the target use case, the next question isn't
+"tune num_gpu better" -- it's "why is /api/chat slower than /api/generate
+at the same placement, and does that dominate everything else."
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
