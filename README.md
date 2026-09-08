@@ -75,6 +75,18 @@ python scripts/mini_agent.py --workdir /path/to/your/project qwen2.5:14b-instruc
     "read the files here and tell me what this project does"
 ```
 
+**`--workdir` must point at a git repo with a clean working tree (commit
+first if it isn't).** Not a suggestion -- confirmed necessary the hard
+way: asked to modify three existing files on a real project, the local
+14B model instead overwrote all three with tiny stubs, silently
+discarding real working logic (a rule engine, a live API integration,
+most of a REST API's routes) while reporting success. `write_file` now
+refuses the most damaging shape of this (a large same-path shrink,
+`scripts/mini_agent.py`'s `tool_write_file`), but that's a narrower
+catch, not a guarantee -- a real git commit to revert to is what actually
+recovered that project in one command. See `PRODUCT_HYPOTHESES.md` for
+the full account.
+
 ## How the placement is kept honest
 
 - **Context-aware**: a placement is only valid at the context window it

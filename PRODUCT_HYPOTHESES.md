@@ -667,6 +667,89 @@ belt-and-suspenders on top of context-aware caching -- they're the only
 thing in this system that can actually catch the nondeterministic case,
 because nothing measured in advance predicts it reliably.
 
+## mini_agent.py gutted real, working code on a real project (2026-09-08)
+
+Continued the "use it yourself, on real work" plan from a fresh angle: a
+genuinely useful, bounded, real task on `D:\fl_ai` (an unrelated real
+project) -- wire an already-collected-but-never-read `chat_log` into the
+system prompt so `/api/chat` gets real multi-turn conversational memory,
+a real gap confirmed by grep before starting (`chat_log.append(...)` in
+`server/main.py`, never referenced anywhere else in the codebase).
+
+**Run 1 stalled, not just slowed.** ~250s and 866 tokens into generating
+a plan, the socket went fully silent and the 300s per-read timeout
+(added specifically so streaming distinguishes a healthy slow generation
+from a real hang) fired -- a genuine stall, not the "healthy long
+generation" case that fix targeted. Ollama was confirmed idle and
+healthy immediately after (`/api/ps`, `/api/tags`, `nvidia-smi` all
+normal, correct 7.1GB VRAM resident). One data point, not chased further
+-- but `mini_agent.py` crashed with a raw traceback instead of a clean
+message, so that got fixed regardless (`chat()`'s `TimeoutError`/`OSError`
+now stop the session cleanly with a diagnostic and a logged `stalled:
+true` entry, same "record the failure, don't crash" discipline as
+`ramer_local.py`'s `safe_measure`).
+
+**Run 2 didn't stall -- it did something worse.** No socket error this
+time; the model completed 3 model calls and reported success. But it had
+used `write_file` (the only write tool -- full overwrite, no diff/patch)
+to replace three real files with tiny illustrative stubs instead of
+editing them: `ai_agent/agent.py`'s `RuleBasedAgent` (real keyword-matched
+EQ/volume/limiter logic across 5 cases) and `ClaudeAgent` (a real
+Anthropic API integration) both became `return {"suggestion": "..."}`
+placeholders; `server/main.py` lost `/api/snapshot`, `/api/analyze`, and
+`/api/preview` entirely, keeping only a stub `/api/chat`. Test suite went
+from 29/29 passing to 5 failing. The model then fabricated a fake `user`
+turn mid-response ("Can you also make sure the `Plan` class has a
+meaningful representation...") -- no tool call followed, so the harness
+correctly treated that as a finished, non-tool response and stopped,
+leaving the task both incomplete and destructive. Nothing about the tool
+result (`"wrote 810 bytes to ai_agent/agent.py"`) signaled anything was
+wrong -- a shrink from a real ~5KB file with working logic to a few
+hundred bytes of stub looks, from the tool's return value alone,
+identical to a legitimate small edit.
+
+**Recovered cleanly because of a precaution taken *before* this session's
+own runs, not because of anything the agent did.** `fl_ai` had no git
+history before this project touched it; it was `git init`'d and given a
+baseline commit specifically because the existing guidance ("point
+`--workdir` only at directories you're fine with a model editing, ideally
+under git") had never actually been exercised against a real destructive
+failure until now. `git checkout -- <3 files>` restored 29/29 passing
+in one command. Without that baseline, this would have been real,
+un-undoable damage to someone else's working project.
+
+**Fix, scoped to the actual failure, not a general "agents are risky"
+overreaction**: `write_file` now refuses a same-path write that would
+shrink an existing file (>=200 bytes) to under 50% of its current size,
+returning an error explaining why instead of silently applying it --
+`scripts/mini_agent.py`, `tool_write_file`. This is exactly the shape of
+what happened both times (a large real file collapsing to a small stub),
+cheap to check, doesn't block genuine large deletions written to a
+different path, and gives the model a chance to self-correct (read the
+full file, preserve what wasn't asked to change) instead of silently
+destroying it. It does not fix the deeper cause -- a 14B local model
+asked to "modify" a file sometimes writes what it imagines the file
+should contain instead of the file it actually read -- only catches the
+most damaging shape of that failure after the fact.
+
+**What this actually settles**: the honest update from the earlier
+agentic-load correction was "Ramer's placement gap under real agentic
+load is real (+28-37%), but that doesn't mean this coding agent is safe
+or reliable to use on real code" -- this is the first time that second
+half was tested directly rather than assumed, and it failed, concretely
+and reproducibly-shaped (not a one-off crash, a describable failure
+pattern: full-overwrite tool + no-diff-capable small model + an
+open-ended "modify" instruction). This doesn't change anything about
+Ramer's placement numbers -- both runs used the correct cached placement
+throughout, num_gpu=33 at ctx=8192, no drift or staleness flagged. It
+changes what claim "mini_agent.py works on real projects" can honestly
+support: it can perform real, correct edits (the earlier fl_ai fixes, and
+the D:\ramer self-review of the self-healing fix, both landed cleanly)
+and it can also destroy real, working code while reporting success --
+both are now demonstrated, not hypothetical, and anyone pointed at this
+tool needs the git-baseline precaution treated as a requirement, not a
+suggestion.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum

@@ -124,8 +124,32 @@ def tool_read_file(path: str) -> str:
     return p.read_text(errors="replace")
 
 
+WRITE_SHRINK_GUARD_RATIO = 0.5  # refuse a same-path overwrite below this fraction of the existing size
+WRITE_SHRINK_GUARD_MIN_BYTES = 200  # below this, a small file legitimately being replaced isn't worth flagging
+
+
 def tool_write_file(path: str, content: str) -> str:
+    """write_file always fully overwrites -- there's no patch/diff tool. Seen for
+    real on an actual project: asked to *modify* three existing files (add a
+    parameter threaded through several functions), a 14B local model instead
+    wrote small illustrative stubs over all three, silently discarding real,
+    working logic (a keyword-matched rule engine, a live API integration, most
+    of a REST API's routes) -- tests went from 29/29 to 5 failing, and nothing
+    about the tool result said anything was wrong. A large same-path shrink is
+    exactly what that failure looks like from here, so it's refused rather than
+    silently applied -- cheap to check, and a legitimate large deletion can
+    still happen, just not as an unremarked side effect of an ambiguous
+    'modify this file' instruction."""
     p = _resolve(path)
+    if p.exists():
+        old_size = p.stat().st_size
+        new_size = len(content.encode())
+        if old_size >= WRITE_SHRINK_GUARD_MIN_BYTES and new_size < old_size * WRITE_SHRINK_GUARD_RATIO:
+            return (f"error: refusing to write {path} -- this would shrink it from {old_size} to {new_size} "
+                     f"bytes ({100 * new_size / old_size:.0f}% of the original). That looks like an accidental "
+                     f"full overwrite of an existing file rather than the intended edit. Read the full current "
+                     f"file first and write back the complete content with only the intended change, or write "
+                     f"to a different path if a smaller file is genuinely intended.")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
     return f"wrote {len(content)} bytes to {path}"
@@ -317,7 +341,26 @@ def main():
             )) + "\n")
 
     for step in range(1, MAX_STEPS + 1):
-        resp = chat(model, messages, num_gpu, num_ctx)
+        try:
+            resp = chat(model, messages, num_gpu, num_ctx)
+        except (TimeoutError, OSError) as e:
+            # Seen for real: a generation can go fully silent mid-stream (no
+            # chunks at all, not just slow ones) for longer than the 300s
+            # per-read socket timeout in chat() -- a genuine Ollama/driver
+            # stall, not the "healthy long generation" that streaming was
+            # built to distinguish from a hang. That case still deserves a
+            # clear stop and a record of what happened, not a raw traceback
+            # a real usage session -- same philosophy as ramer_local.py's
+            # safe_measure treating a failed candidate as data, not a crash.
+            print(f"\n[agent] stalled: no response from Ollama for over 300s on step {step} ({e}). "
+                  f"Stopping -- this is a real stall, not just a slow generation (streaming already "
+                  f"tolerates those). Check `ollama ps` / GPU state before retrying.")
+            with open(SESSION_LOG_PATH, "a") as f:
+                f.write(json.dumps(dict(
+                    ts=time.strftime("%Y-%m-%dT%H:%M:%S"), model=model, num_gpu=num_gpu, task=task,
+                    steps=step, turns=turns, stalled=True, stall_error=str(e),
+                )) + "\n")
+            sys.exit(1)
         record_turn(resp)
         msg = resp.get("message", {})
         messages.append(msg)
