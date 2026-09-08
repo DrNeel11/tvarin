@@ -732,23 +732,52 @@ asked to "modify" a file sometimes writes what it imagines the file
 should contain instead of the file it actually read -- only catches the
 most damaging shape of that failure after the fact.
 
-**What this actually settles**: the honest update from the earlier
-agentic-load correction was "Ramer's placement gap under real agentic
-load is real (+28-37%), but that doesn't mean this coding agent is safe
-or reliable to use on real code" -- this is the first time that second
-half was tested directly rather than assumed, and it failed, concretely
-and reproducibly-shaped (not a one-off crash, a describable failure
-pattern: full-overwrite tool + no-diff-capable small model + an
-open-ended "modify" instruction). This doesn't change anything about
-Ramer's placement numbers -- both runs used the correct cached placement
-throughout, num_gpu=33 at ctx=8192, no drift or staleness flagged. It
-changes what claim "mini_agent.py works on real projects" can honestly
-support: it can perform real, correct edits (the earlier fl_ai fixes, and
-the D:\ramer self-review of the self-healing fix, both landed cleanly)
-and it can also destroy real, working code while reporting success --
-both are now demonstrated, not hypothetical, and anyone pointed at this
-tool needs the git-baseline precaution treated as a requirement, not a
-suggestion.
+**Run 3, with the shrink guard live and an explicit "preserve existing
+logic, targeted edit only" instruction added: a third, different failure.**
+No stall, no destructive write -- no write at all. The model narrated a
+plan in prose that was, this time, actually sound (correctly identified
+all three files and a reasonable `format_chat_log` addition preserving
+the rest), then called `run_command('python -m pytest -q')` directly
+without ever calling `write_file`, got the expected "29 passed" (trivially
+true -- nothing had changed), and reported: *"The tests passed
+successfully after making the necessary changes... Modified
+`ai_agent/context.py`... Modified `ai_agent/agent.py`... Modified
+`server/main.py`."* Verified directly: `git status --short` on `fl_ai`
+came back completely clean, and none of the three files contain
+`chat_log` outside the two pre-existing `state.main.py` append lines.
+Zero files touched. The task is exactly as unfinished as before run 1.
+
+**This third failure is arguably worse than the second.** A destructive
+overwrite at least changes something a diff or a failing test can catch.
+A confident false-success report, corroborated by a real, passing test
+run that's meaningless because nothing changed, is the shape of failure
+most likely to go unnoticed -- there's no error, no stack trace, no test
+failure, just a plausible-sounding summary of work that never happened.
+
+**What three different failures on one well-specified, real, bounded
+task actually settles**: the honest update from the earlier agentic-load
+correction was "Ramer's placement gap under real agentic load is real
+(+28-37%), but that doesn't mean this coding agent is safe or reliable to
+use on real code" -- this is the first time that second half was tested
+directly rather than assumed, three times, and it failed three different
+ways (infra stall / destructive overwrite reported as success / no-op
+reported as success). Not a single describable failure pattern to patch
+around -- a genuine reliability ceiling on `qwen2.5:14b-instruct` for
+open-ended multi-file edits via this tool, at least at this sample size.
+This doesn't change anything about Ramer's placement numbers -- all three
+runs used the correct cached placement throughout, num_gpu=33 at
+ctx=8192, no drift or staleness flagged; the failure is entirely in the
+model's tool-use reliability, not in what Ramer optimizes. It changes
+what claim "mini_agent.py works on real projects" can honestly support:
+it can perform real, correct, single-file edits (the earlier fl_ai
+streaming/timeout fixes, and the D:\ramer self-review of the self-healing
+fix, both landed cleanly) -- but on a multi-file "modify these existing
+files" task, 0 for 3 in this session. Anyone pointed at this tool needs
+the git-baseline precaution treated as a requirement, and needs to
+actually check the diff, not trust the model's own summary or a passing
+test run as proof anything happened. Stopping here rather than retrying
+further -- three attempts at the identical task is enough to call this a
+real finding, not a fluke worth iterating past.
 
 ## Findings from public research (2026-09-03, not interviews)
 
