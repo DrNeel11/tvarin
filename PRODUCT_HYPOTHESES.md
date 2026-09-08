@@ -755,29 +755,42 @@ most likely to go unnoticed -- there's no error, no stack trace, no test
 failure, just a plausible-sounding summary of work that never happened.
 
 **What three different failures on one well-specified, real, bounded
-task actually settles**: the honest update from the earlier agentic-load
-correction was "Ramer's placement gap under real agentic load is real
-(+28-37%), but that doesn't mean this coding agent is safe or reliable to
-use on real code" -- this is the first time that second half was tested
-directly rather than assumed, three times, and it failed three different
-ways (infra stall / destructive overwrite reported as success / no-op
-reported as success). Not a single describable failure pattern to patch
-around -- a genuine reliability ceiling on `qwen2.5:14b-instruct` for
-open-ended multi-file edits via this tool, at least at this sample size.
-This doesn't change anything about Ramer's placement numbers -- all three
-runs used the correct cached placement throughout, num_gpu=33 at
-ctx=8192, no drift or staleness flagged; the failure is entirely in the
-model's tool-use reliability, not in what Ramer optimizes. It changes
-what claim "mini_agent.py works on real projects" can honestly support:
-it can perform real, correct, single-file edits (the earlier fl_ai
-streaming/timeout fixes, and the D:\ramer self-review of the self-healing
-fix, both landed cleanly) -- but on a multi-file "modify these existing
-files" task, 0 for 3 in this session. Anyone pointed at this tool needs
-the git-baseline precaution treated as a requirement, and needs to
-actually check the diff, not trust the model's own summary or a passing
-test run as proof anything happened. Stopping here rather than retrying
-further -- three attempts at the identical task is enough to call this a
-real finding, not a fluke worth iterating past.
+task actually settles -- stated carefully, not overclaimed.** The honest
+update from the earlier agentic-load correction was "Ramer's placement
+gap under real agentic load is real (+28-37%), but that doesn't mean this
+coding agent is safe or reliable to use on real code" -- this is the
+first time that second half was tested directly rather than assumed.
+**In this three-run sample, `qwen2.5:14b-instruct` failed all three
+attempts at a bounded multi-file editing task, with three distinct
+failure modes (infrastructure stall; destructive overwrite reported as
+success; zero-edit no-op reported as success). This provides evidence
+that reliable open-ended multi-file editing is not established for this
+agent/model configuration -- the sample is too small to characterize a
+general reliability ceiling, and doesn't rule out that a better prompt,
+a smaller step size, or a different model in the same weight class would
+do better.** What the sample size *does* support without qualification:
+0/3 on this task, and a real, generalizable lesson independent of sample
+size -- **an agent must verify state, not merely report intent or test
+results.** Run 3 is the clearest case: a real `pytest` run genuinely
+reported "29 passed," and that was worthless as evidence, because
+nothing about the request had been touched. A passing test suite proves
+existing behavior wasn't broken; it proves nothing about whether the
+requested change exists. This doesn't change anything about Ramer's
+placement numbers -- all three runs used the correct cached placement
+throughout, num_gpu=33 at ctx=8192, no drift or staleness flagged; the
+failure is entirely in the model's tool-use reliability, not in what
+Ramer optimizes. It cleanly separates two different problems this
+project now has evidence about: Ramer's question ("how do I make this
+local model run efficiently") looks solid; the agent layer's question
+("how do I make the model safely operate on real code") is far from
+solved. Anyone pointed at this tool needs the git-baseline precaution
+treated as a requirement, and needs to actually check the diff, not
+trust the model's own summary or a passing test run as proof anything
+happened. Stopping here rather than retrying further -- three attempts
+at the identical task is enough to document the finding; more retries
+would trade a useful observation for an open-ended debugging session.
+See the next section for the fix this points at: the agent checking its
+own claimed changes against git, rather than a human having to.
 
 ## Findings from public research (2026-09-03, not interviews)
 

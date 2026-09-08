@@ -155,6 +155,27 @@ def tool_write_file(path: str, content: str) -> str:
     return f"wrote {len(content)} bytes to {path}"
 
 
+def git_changed_files(cwd: Path) -> list[str] | None:
+    """None means "not a git repo" (or git unavailable) -- verification is
+    skipped rather than faked, since there's no ground truth to compare
+    against without one. A list (possibly empty) means git ran cleanly and
+    is the actual state of the working tree, independent of anything the
+    model claims to have done."""
+    try:
+        # "-- ." scopes to cwd's own subtree -- without it, a sandbox that's a
+        # subdirectory of a larger repo (the default agent_sandbox/, which
+        # lives inside this repo) would report changes anywhere in the whole
+        # repo, not just within the sandbox this session actually touched.
+        result = subprocess.run(
+            ["git", "-C", str(cwd), "status", "--porcelain", "--", "."], capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return [line[3:].strip() for line in result.stdout.splitlines() if line.strip()]
+
+
 def tool_list_dir(path: str = ".") -> str:
     p = _resolve(path)
     if not p.exists():
@@ -308,11 +329,19 @@ def main():
     print(f"[agent] sandbox: {SANDBOX}")
     print(f"[agent] task: {task}\n")
 
+    baseline_changed = git_changed_files(SANDBOX)
+    if baseline_changed:
+        print(f"[agent] warning: {SANDBOX} has {len(baseline_changed)} uncommitted change(s) before this session "
+              f"even starts -- verification below can't tell those apart from ones this session makes. "
+              f"Commit or stash first for a clean baseline.\n")
+
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": task},
     ]
     turns = []  # per-model-call stats, to see how throughput/context trend over a long session
+    files_written = []  # every path a successful write_file call actually touched this session -- ground truth
+                         # to check the model's own claims against, not a substitute for reading the diff yourself
 
     def record_turn(resp: dict):
         eval_count = resp.get("eval_count") or 0
@@ -334,10 +363,39 @@ def main():
         print(f"  {'call':>4} {'prompt tok':>10} {'gen tok':>7} {'tok/s':>7} {'wall s':>7}")
         for t in turns:
             print(f"  {t['turn']:>4} {t['prompt_eval_count']:>10} {t['eval_count']:>7} {t['tok_s']:>7} {t['wall_s']:>7}")
+
+        # Ground-truth check against git, not against what the model's own
+        # final answer claims to have done. Motivated by a real failure: a
+        # session that never called write_file even once still reported
+        # "modified 3 files" in prose, and a `pytest` run that trivially
+        # passed (nothing had changed) read, out of context, like
+        # corroborating evidence. Neither the model's summary nor a passing
+        # test run is proof any edit happened -- git status is.
+        verified = None
+        final_changed = git_changed_files(SANDBOX)
+        if final_changed is not None:
+            new_changes = [f for f in final_changed if f not in (baseline_changed or [])]
+            if not files_written:
+                verified = False
+                print(f"\n[agent] verification: 0 write_file calls succeeded this session, and git shows "
+                      f"{'no changes' if not new_changes else f'{len(new_changes)} changed file(s) anyway (' + ', '.join(new_changes) + ')'} "
+                      f"-- if the summary above claims files were modified, that claim is unverified. Treat this "
+                      f"as a no-op unless you check `git status` yourself.")
+            else:
+                unconfirmed = [p for p in files_written if p not in new_changes]
+                verified = not unconfirmed
+                print(f"\n[agent] verification: write_file succeeded for {len(files_written)} file(s) this session "
+                      f"({', '.join(files_written)}); git confirms {len(new_changes)} file(s) actually changed "
+                      f"({', '.join(new_changes) if new_changes else 'none'}).")
+                if unconfirmed:
+                    print(f"[agent] warning: {', '.join(unconfirmed)} reported a successful write but git shows "
+                          f"no resulting change -- investigate before trusting that edit happened.")
+
         with open(SESSION_LOG_PATH, "a") as f:
             f.write(json.dumps(dict(
                 ts=time.strftime("%Y-%m-%dT%H:%M:%S"), model=model, num_gpu=num_gpu, task=task,
                 steps=steps_taken, turns=turns, session_wall_s=session_wall_s,
+                files_written=files_written, git_verified=verified,
             )) + "\n")
 
     for step in range(1, MAX_STEPS + 1):
@@ -393,6 +451,8 @@ def main():
                     result = func(**args)
                 except Exception as e:
                     result = f"error: {e}"
+            if name == "write_file" and not result.startswith("error") and "path" in args:
+                files_written.append(args["path"])
             preview = result if len(result) <= 300 else result[:300] + "... (truncated)"
             print(f"          -> {preview}\n")
             messages.append({"role": "tool", "content": result})
