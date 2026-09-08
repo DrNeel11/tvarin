@@ -792,6 +792,62 @@ would trade a useful observation for an open-ended debugging session.
 See the next section for the fix this points at: the agent checking its
 own claimed changes against git, rather than a human having to.
 
+## External corroboration for the agent-reliability finding (2026-09-08)
+
+The user ran their own research pass (web search, not done independently
+by this session -- sources as reported, not re-verified here) to check
+whether the 0/3 mini_agent.py result reflects something specific to this
+setup or a pattern the wider field is also seeing in 2026. Headline: the
+individual 0/3 sample stays too small to generalize into a stated
+failure rate for `qwen2.5:14b-instruct`, but every *category* of failure
+observed here has real, independent 2026 support:
+
+- **Even frontier coding agents fail a large fraction of real tasks.**
+  CCBench (per the user's research): Codex CLI + GPT-5.2-Codex 75.4%,
+  Claude Code + Opus 4.6 72.7%, down to Claude Code + Haiku 4.5 21.9%.
+  Reframes 0/3 on one weak local model as consistent with a field where
+  roughly 1-in-4 tasks fail even at the frontier, not an anomaly.
+- **"Tests pass" as false evidence is a recognized benchmark-design
+  problem, not just an artifact of this project's own harness.** OpenAI's
+  July 2026 SWE-bench Pro audit reportedly found low-test-coverage issues
+  in 9.4% of tasks -- the same shape as this project's run 3 (a real,
+  passing test suite that proved nothing about whether the requested
+  change existed).
+- **Validation-oriented agents reportedly do better.** An arXiv study
+  ("Beyond Resolution Rates: Behavioral Drivers of Coding Agent Success
+  and Failure," ~9,374 trajectories across 19 agents/14 LLMs/500 tasks,
+  per the user's research) reportedly found agents that gather context
+  before editing and invest in validation succeed more often -- directly
+  in line with this session's `finish()` fix, not just a plausible-sounding
+  idea.
+- **Local-model agent *integration* specifically, not just raw
+  inference, is a reported pain point elsewhere.** Reddit reports cited by
+  the user describe local models (Qwen3.8-27B, others) working fine for
+  direct inference but needing a proxy or extra tooling once used as an
+  agent backend, citing malformed tool calls, long-prefill timeouts, and
+  premature termination after tool results -- the same *shape* of failure
+  as this project's stall and false-success runs, from unrelated setups.
+
+**What this changes and what it doesn't.** It does not turn 0/3 into a
+statistically meaningful failure rate for `qwen2.5:14b-instruct` -- three
+trials still can't support that, regardless of how well they line up
+with the wider literature. What it does support: this project's finding
+isn't an artifact of a badly-written mini agent or an unusually weak
+model choice, and the field's own response to the same problem (build
+validation in, don't trust the model's narrative or a passing test
+alone) is the same direction `finish()`'s git cross-check already took.
+Also worth carrying forward as explicit framing, not just implicit in
+the numbers: **local inference optimization and local-agent reliability
+are separate bottlenecks.** A model can be made fast enough to be
+pleasant to use (Ramer's actual contribution, +16-35% validated across
+context lengths) while remaining unreliable enough that it can't be
+trusted unsupervised on a real repository (mini_agent.py's 0/3, not
+something tuning `num_gpu` harder can fix). Reinforces, rather than
+changes, the existing decision not to pivot Ramer into "build another
+coding agent" -- that space is already crowded with much stronger models
+failing a meaningful fraction of tasks; what's actually novel here is
+narrower and lower down the stack.
+
 ## Findings from public research (2026-09-03, not interviews)
 
 Two findings that narrow H1 and H2 further, found by reading real forum
