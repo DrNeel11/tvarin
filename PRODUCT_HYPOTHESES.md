@@ -1186,6 +1186,20 @@ workloads, prediction, cross-architecture generality, discrete-GPU
 behavior, physical VRAM limits) have narrowed the space enough that another
 solo experiment is worth less right now than real customer signal.
 
+**Update, tagged `v0.2-discovery-ready` (2026-09-08): the tool-building
+phase that followed v0.1 is also frozen now, for the same reason.**
+Ramer Local (context-aware placement, headroom-aware tiebreak,
+self-healing safety nets, validated robust across context lengths in
+Experiment C) and `mini_agent.py` (real-usage-validated, including a
+significant negative result -- 0/3 on a bounded multi-file editing task,
+now with a git-based self-verification step) are both built and stress-
+tested against real usage, not just synthetic benchmarks. The tag exists
+specifically so "keep finding interesting failures to fix" doesn't quietly
+become the roadmap forever -- every failure found this far *has* been
+worth fixing, but that's a reason to stop on a high note, not a reason to
+keep going. No more agent features or technical experiments planned
+before customer discovery actually happens.
+
 **Next milestone: ~20 customer-discovery interviews**, then identify the
 top 2-3 recurring, *unprompted* pain points before deciding what (if
 anything) to build. Don't pitch Ramer or ask "would you use an AI memory
