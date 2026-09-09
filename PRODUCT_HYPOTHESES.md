@@ -1249,6 +1249,60 @@ one way or the other on causation. Matches the user's own experimental
 design exactly: observe first, optimize second, and only if the pain
 turns out to be real -- which, on the dominant finding, it is.
 
+## Ramer Multi-Agent Scheduler v0: built, unit-tested, first real comparison inconclusive (2026-09-09)
+
+Direct follow-up to Experiment D, per the proposed next step: build the
+smallest possible scheduler (`app/core/scheduler.py`, `RamerScheduler`)
+-- model-residency tracking, a priority queue, sticky same-model
+affinity, a short keep-hot grace window -- and run the identical 4-agent
+setup through it instead of naive concurrent Ollama calls, to see if a
+deliberate policy beats the accidental thrashing Experiment D found.
+`num_gpu="auto"` held constant throughout (scheduling is the only
+variable under test, not placement).
+
+**The scheduler's own logic is verified correct, independent of
+Ollama.** Three fast unit tests (`app/tests/test_scheduler.py`) with a
+fake `chat_impl` confirm: higher-priority requests are served first even
+when queued alongside lower-priority ones; a same-model request already
+queued is preferred over one requiring a switch; the switch counter is
+accurate (and doesn't miscount the very first request, a real bug this
+caught before it reached the real comparison). This part is solid.
+
+**The first real comparison (same 4 models/tasks/workspaces as
+Experiment D, routed through the scheduler) is not a valid test of the
+scheduling policy, and saying so plainly matters more than the raw
+numbers.** Total wall time was 329.5s vs. Experiment D's 215.5s --
+*worse*, including for the two priority-0 ("interactive") agents the
+scheduler was supposed to help most (coding: 205.2s -> 279.8s;
+personal_assistant: 215.5s -> 286.8s). Root cause, found in the
+scheduler's own serve log rather than guessed at: `qwen2.5:14b-instruct`
+generated **2323 tokens** on its first turn this run, against **178
+tokens** for the nominally identical task/model/prompt in the Experiment
+D baseline -- one anomalously long generation, 268.7s of the 279.8s that
+agent took, that then blocks every other agent behind it regardless of
+scheduler (only one generation can run on one GPU at a time, a hardware
+fact no scheduling policy changes). This is the same category of
+mistake this project already corrected once before (the original
+"placement gap vanishes under agentic load" conclusion, fixed by a
+controlled 2x2x2 grid instead of a single sample) -- one run of each
+condition cannot separate a real scheduling effect from ordinary
+generation-length variance this large. Switch count *did* go down (3
+switches for 7 served requests, vs. Experiment D's pattern of reloading
+the same model twice), which is real and directly attributable to the
+scheduler's sticky-affinity logic -- but it didn't translate to a lower
+total wall time in this pair of runs, and claiming it did without this
+caveat would repeat the earlier mistake instead of learning from it.
+
+**What this settles and what it doesn't.** It settles that the v0
+scheduler's ordering logic works as designed (unit-tested) and that
+switch count can be reduced (observed). It does not settle whether the
+scheduling policy actually improves real-world latency -- that needs
+either repeated trials to average out generation-length noise, or a
+bounded `num_predict` so every run's workload is comparable, neither of
+which was done here. Stopping to report this honestly rather than
+re-running silently until a favorable result appears -- exactly the
+discipline this project applied to the earlier agentic-load correction.
+
 ## Explicitly not pursuing (for now)
 
 **Datacenter multi-tenant LLM serving.** Phase 8's core mechanism is

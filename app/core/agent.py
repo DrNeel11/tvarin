@@ -55,6 +55,7 @@ class AgentSession:
     num_ctx: int
     permission_callback: Optional[Callable[[str, dict], bool]] = None
     baseline_tok_s: Optional[float] = None  # from a Ramer placement probe, if available -- used for drift detection
+    chat_fn: Callable = chat  # override to route through a scheduler instead of calling Ollama directly (see scripts/exp_multiagent_scheduler.py)
 
     def __post_init__(self):
         self.tool_ctx = ToolContext(workspace=Path(self.workspace), permission_callback=self.permission_callback)
@@ -79,7 +80,7 @@ class AgentSession:
                 return {"cancelled": True}
 
             try:
-                resp = chat(self.model, self.messages, self.num_gpu, self.num_ctx, tools=TOOL_SCHEMAS)
+                resp = self.chat_fn(self.model, self.messages, self.num_gpu, self.num_ctx, tools=TOOL_SCHEMAS)
             except (TimeoutError, OSError) as e:
                 on_event(AgentEvent("stalled", {"message": str(e)}))
                 return {"stalled": True}
