@@ -219,7 +219,7 @@ def ramers_num_gpu(model: str, num_ctx: int) -> object:
     return "auto"
 
 
-def chat(model: str, messages: list, num_gpu, num_ctx: int) -> dict:
+def chat(model: str, messages: list, num_gpu, num_ctx: int, tools: list | None = None) -> dict:
     """Streams the response. Found the hard way on a real project: a step
     that reads two source files then writes a full rewritten one can run
     for minutes at ~10 tok/s, and with stream:false that was minutes of
@@ -229,13 +229,17 @@ def chat(model: str, messages: list, num_gpu, num_ctx: int) -> dict:
     while the model works on a tool call (whose JSON isn't worth
     streaming to a terminal), and the socket timeout now bounds the gap
     *between* tokens, so a real stall is still caught but a long answer
-    isn't."""
+    isn't.
+
+    tools defaults to this script's own TOOLS so the CLI usage below is
+    unchanged; the app/ package passes its own tool schemas through here
+    instead of duplicating this streaming implementation."""
     options = {"num_ctx": num_ctx}
     if num_gpu != "auto":
         options["num_gpu"] = num_gpu
     req = urllib.request.Request(
         f"{OLLAMA_HOST}/api/chat",
-        data=json.dumps({"model": model, "messages": messages, "tools": TOOLS, "stream": True, "options": options}).encode(),
+        data=json.dumps({"model": model, "messages": messages, "tools": tools if tools is not None else TOOLS, "stream": True, "options": options}).encode(),
         headers={"Content-Type": "application/json"},
     )
     t0 = time.time()

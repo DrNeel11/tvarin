@@ -9,3 +9,4 @@ landing/node_modules/
 landing/dist/
 agent_sandbox/
 mini_agent_sessions.jsonl
+app_sessions.jsonl

@@ -2,30 +2,46 @@
 
 The production application, kept separate from `scripts/` (the research
 CLI tools and experiments this app is built on top of -- see the repo
-root `README.md` and `PRODUCT_HYPOTHESES.md` for that history). This
-directory is meant to become the actual "download it, it just works"
-product; `scripts/ramer_local.py` and `scripts/mini_agent.py` stay as the
-validated research prototypes that proved the underlying approach.
+root `README.md` and `PRODUCT_HYPOTHESES.md` for that history).
+`scripts/ramer_local.py` and `scripts/mini_agent.py` stay as the
+validated research prototypes; this app reuses their core logic (GPU
+queries, the probe/cache/pick_best algorithm, the streaming chat loop,
+the git-verification step) rather than duplicating it.
 
-## Status: Milestone 1 of 4
+## Status: Milestones 1-4 of 4 done
 
-**Done and tested**: hardware detection, Ollama integration, model
-selection UI.
+Hardware detection, Ollama integration, model selection, placement
+optimization, and a working coding agent (filesystem/terminal/git tools,
+permission prompts, streaming, context tracking, drift detection, git
+self-verification, observability logging) are all implemented and
+tested against real hardware, a live Ollama server, and real model
+calls -- not mocks, not a mockup. Both a GUI and a CLI exist, both
+calling the same `Orchestrator`.
 
-**Not built yet**: placement engine/cache wired into the app (still only
-in `scripts/ramer_local.py`), agent harness, project workspace, runtime
-monitoring/drift-watch, CLI. See "Remaining milestones" below.
+**What's genuinely still missing, stated plainly**: MCP tool support
+(architecture allows adding it -- see `agent_tools.py`'s tool registry
+-- but nothing is wired up), git commit/stage tools (status and diff
+only, per spec), automated GUI tests (verification so far is real but
+manual -- see below), and any polish beyond "functional." This is an
+MVP, not a finished product.
 
 ## Run it
 
 ```bash
 pip install -r app/requirements.txt
+
+# GUI
 python -m app.gui.main
+
+# CLI
+python -m app.cli doctor
+python -m app.cli models
+python -m app.cli benchmark qwen2.5:14b-instruct --num-ctx 8192
+python -m app.cli run qwen2.5:14b-instruct --workdir D:\some\project "fix the bug in auth.py"
 ```
 
 Requires Ollama running locally (`127.0.0.1:11434`) with at least one
-model pulled -- the app can pull one for you on the model-selection
-screen, but needs Ollama itself already installed and running.
+model pulled.
 
 ## Test it
 
@@ -33,59 +49,99 @@ screen, but needs Ollama itself already installed and running.
 python -m pytest app/tests/ -v
 ```
 
-These are **real integration tests against this machine's actual
-hardware and live Ollama server**, not mocks -- consistent with this
-project's existing rule (see `PRODUCT_HYPOTHESES.md`) against faking
-measurements. Running them requires an NVIDIA GPU and at least one
-Ollama model installed. 12/12 passing as of this milestone.
+**38/38 passing.** These are real integration tests against this
+machine's actual hardware, a live Ollama server, and (for the agent
+tests) real model calls -- no mocks, consistent with this project's
+existing rule against faking measurements. Running them requires an
+NVIDIA GPU and at least one Ollama model installed (`qwen2.5:3b-instruct`
+and `qwen2.5:14b-instruct` specifically, since two tests pin those model
+names for speed/quality reasons).
 
 ## What's actually implemented
 
-- `app/core/hardware.py` -- real hardware detection (GPU name/VRAM via
-  `nvidia-smi`, reusing `scripts/ramer_local.py`'s existing helpers
-  rather than duplicating them; system RAM via `psutil`; CPU name via
-  WMI on Windows; Ollama availability and installed-model list via the
-  real API). Every field is either a real measurement or explicitly
-  listed in `HardwareSnapshot.errors` -- never silently faked.
-- `app/core/model_runtime.py` -- the `ModelRuntime` abstraction the rest
-  of the app is meant to depend on, plus `OllamaRuntime`, the only
-  implementation today. A curated list of 3 models (the same
-  `qwen2.5:*-instruct` sizes already benchmarked in this project's own
-  research), a simple, explainable VRAM-based recommendation (not a
-  learned model), and a real streaming `pull()` that reports Ollama's
-  actual download progress.
-- `app/gui/` -- a two-screen PySide6 app: hardware detection (Setup) ->
-  model selection (Model), wired to the real core above via background
-  `QThread`s so hardware detection and model pulls never block the UI.
-  Verified by rendering each screen's actual widget tree to a pixmap
-  from inside the Qt process (not an OS screenshot -- that approach was
-  tried first and rejected because it captures whatever else is on the
-  user's screen) and visually confirming the real detected hardware,
-  the real installed-model list, and the real recommendation appear
-  correctly.
+**Core** (`app/core/`, no GUI dependency -- this is what the CLI and GUI
+both sit on top of via `Orchestrator`):
+- `hardware.py` -- real GPU/VRAM/RAM/CPU/OS/Ollama detection. Every field
+  is a real measurement or listed in `HardwareSnapshot.errors`.
+- `model_runtime.py` -- the `ModelRuntime` abstraction + `OllamaRuntime`,
+  a curated 3-model list, VRAM-based recommendation, streaming pull.
+- `placement.py` -- wraps `scripts/ramer_local.py`'s `probe()`/cache
+  logic (context-aware caching, headroom-aware tiebreak) behind a
+  callable `PlacementEngine`, adding no new placement logic of its own.
+- `agent_tools.py` -- `read_file`, `write_file` (with the same
+  write-shrink guard `mini_agent.py` needed after a real destructive
+  failure), `list_directory`, `search_files`, `run_command` (with a
+  timeout), `git_status`, `git_diff`. All confined to one `ToolContext`
+  workspace (path-traversal refused), all gated through a
+  `permission_callback` for the dangerous ones (`write_file`,
+  `run_command`). Tool registry is a plain dict so an MCP-provided tool
+  can be added later without touching the agent loop.
+- `agent.py` -- `AgentSession`, the tool-calling loop over
+  `scripts/mini_agent.py`'s streaming `chat()` (parameterized to accept
+  this app's own tool schemas rather than duplicated). Tracks context
+  usage (warns past 85%), watches for sustained throughput drift against
+  a Ramer-measured baseline, supports cooperative cancellation, and ends
+  every run with a **git-based self-verification** step -- cross-checks
+  every file the agent actually wrote against `git status`, independent
+  of whatever the model's own final answer claims. This exists because
+  of a real failure during this project's own validation (see
+  `PRODUCT_HYPOTHESES.md`): a session that wrote zero files still
+  reported "modified 3 files."
+- `observability.py` -- logs model/context/placement/tok-s/verification/
+  drift per session to `app_sessions.jsonl`, structurally excluding
+  message content and task text (checked by a test, not just by
+  intention) -- no source code or prompts collected, per spec.
+- `orchestrator.py` -- the one object the GUI and CLI both depend on.
+
+**GUI** (`app/gui/`, PySide6): Setup -> Model -> Placement -> Agent, each
+screen backed by a background `QThread` so hardware detection, model
+pulls, placement probes, and agent turns never block the UI. Dangerous
+tool calls raise a real modal dialog via a `PermissionBridge` that
+blocks the worker thread (not the UI thread) until the user answers --
+the one genuinely tricky piece of Qt plumbing here, documented in its
+own file.
+
+**CLI** (`app/cli.py`): `doctor`, `models`, `benchmark`, `run` -- all
+argument-parsing and printing only, calling the same `Orchestrator`
+methods the GUI calls. Verified for real: `run` completed a real
+file-creation task end-to-end with a piped permission approval.
 
 ## What was tested vs. what's a smoke test
 
-Real, automated (`pytest`): hardware detection, Ollama integration,
-model-list/metadata/recommendation logic -- 12 tests, all against live
-hardware and a live Ollama server, no mocks.
+**Automated (`pytest`, 38 tests, all passing, no mocks)**: hardware
+detection, Ollama integration, placement cache (including one real
+fresh probe, not just cache hits), agent tools (workspace boundary,
+write-shrink guard, permission gating, real git status/diff against a
+real repo), the full agent loop end-to-end (a real model call creating
+and verifying a real file, plus cancellation and a forced-mismatch
+verification check), the orchestrator (including confirming the
+observability log excludes message content), and CLI smoke tests.
 
-Manual, one-time visual check (not automated): both GUI screens render
-correctly and the Setup -> Model navigation works, via a throwaway
-script that grabbed each screen's pixmap and simulated the real
-Continue button click. Worth turning into an automated GUI test later
-(pytest-qt) rather than repeating manually every milestone.
+**Manual, real, but not automated**: the full GUI flow (Setup -> Model
+-> Placement -> Agent) driven by simulated clicks with each screen's
+pixmap grabbed directly from the Qt process (never an OS screenshot,
+which would capture whatever else is on the user's actual screen) --
+confirmed real hardware, real cached placement, and a real agent task
+(`list_directory` on a real temp git repo) all render and complete
+correctly through the full click-path. The permission dialog itself
+(`PermissionBridge`) was exercised via the CLI's piped-input path, not
+yet via an automated GUI click on the actual `QMessageBox` -- worth
+building out with `pytest-qt` before this goes past MVP.
 
-## Remaining milestones (per the original spec)
+## Known compromises, stated rather than hidden
 
-2. Placement engine + placement cache, adapted from `scripts/ramer_local.py`
-   into `app/core/`, wired into model selection (context picker, num_gpu
-   probing, headroom-aware tiebreak) instead of just picking a model.
-3. Agent harness (filesystem/terminal/git tools, permission prompts,
-   workspace boundary), adapted from `scripts/mini_agent.py`.
-4. Streaming agent UI, context-usage display, runtime monitoring
-   (quick-check + drift-watch surfaced in the UI, not just the CLI),
-   observability log, optional CLI.
-
-Each will get its own real tests and an honest status report before
-moving to the next, per the incremental approach this was scoped with.
+- The Setup and Model screens (Milestone 1) call `detect_hardware()` /
+  `OllamaRuntime()` directly rather than through `Orchestrator`, which
+  the Placement and Agent screens (Milestones 2-4) do use. Not a
+  correctness bug -- both paths go through the same underlying
+  `ModelRuntime` -- but it's an inconsistency worth cleaning up rather
+  than a deliberate design choice.
+- `search_files` is filename-glob only, not full-text search.
+- The agent's drift watch compares each full model-call's tok/s against
+  a baseline, not a mid-generation rolling token window like
+  `ramer_local.py`'s `run_with_drift_watch` -- a reasonable adaptation
+  for a multi-turn tool-calling loop (there's no single long generation
+  to watch a window within, most turns are short), but a real
+  simplification worth being explicit about.
+- No MCP tools, no git commit/stage, no cloud routing, no accounts --
+  all correctly out of scope per the spec, not overlooked.

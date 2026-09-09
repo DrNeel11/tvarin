@@ -10,6 +10,7 @@ from app.gui.workers import ModelPullWorker
 
 class ModelCard(QFrame):
     download_clicked = Signal(str)
+    use_clicked = Signal(str)
 
     def __init__(self, name: str, stars: int, note: str, installed: bool, recommended: bool, parent=None):
         super().__init__(parent)
@@ -41,9 +42,14 @@ class ModelCard(QFrame):
         layout.addWidget(self.status_label)
 
         self.action_button = QPushButton()
-        self._set_installed(installed)
         self.action_button.clicked.connect(lambda: self.download_clicked.emit(self.name))
         layout.addWidget(self.action_button)
+
+        self.use_button = QPushButton("Use this model")
+        self.use_button.clicked.connect(lambda: self.use_clicked.emit(self.name))
+        layout.addWidget(self.use_button)
+
+        self._set_installed(installed)
 
     def _set_installed(self, installed: bool) -> None:
         if installed:
@@ -52,6 +58,7 @@ class ModelCard(QFrame):
         else:
             self.action_button.setText("Download")
             self.action_button.setEnabled(True)
+        self.use_button.setEnabled(installed)
 
     def show_progress(self, chunk: dict) -> None:
         self.progress.setVisible(True)
@@ -112,6 +119,7 @@ class ModelScreen(QWidget):
                 installed=entry["name"] in installed_names, recommended=(entry["name"] == recommended),
             )
             card.download_clicked.connect(self._start_download)
+            card.use_clicked.connect(self.model_selected.emit)
             self.cards_container.addWidget(card)
             self._cards[entry["name"]] = card
 
