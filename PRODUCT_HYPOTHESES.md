@@ -1167,6 +1167,88 @@ software specifically (a real possibility worth asking about directly).
 
 ---
 
+## Experiment D: concurrent multi-agent load, unoptimized (2026-09-09)
+
+Public research (OpenClaw's own GitHub issues and Reddit reports, per
+the user's research pass) surfaced a specific hypothesis worth testing
+directly rather than taking on faith: users running several local
+agents at once report multi-minute stalls, timeouts, and "Ollama works
+fine directly but the agent framework is slow" -- a *concurrency/
+resource-management* problem, not a single-model placement problem.
+Rather than installing OpenClaw itself (unknown setup complexity, and
+this project already has a validated agent harness), the hypothesis was
+tested directly with `app/core/agent.py`'s `AgentSession`: 4 different
+models, playing 4 different roles a real personal-AI-agent setup would
+plausibly have, given the identical task (list 3 small files, read
+them, summarize) against 4 identical scratch workspaces, launched
+**simultaneously** via a `threading.Barrier`, on this exact machine
+(RTX 5060 8GB VRAM / 32GB RAM / Ryzen 5 7600) -- deliberately
+**unoptimized**: `num_gpu="auto"` throughout, Ollama's own defaults,
+exactly what a normal user who has never touched Ramer would get.
+Per the user's own framing: don't optimize yet, just observe where it
+breaks.
+
+| role | model | first content at | total wall time |
+|---|---|---|---|
+| research | granite3.1-moe:3b | 51.5s | 51.5s |
+| background_heartbeat | qwen2.5:3b-instruct | 103.9s | 103.9s |
+| coding | qwen2.5:14b-instruct | 27.6s | 205.2s |
+| personal_assistant | qwen2.5:7b-instruct | 215.5s | 215.5s |
+
+Raw data: `results/exp_multiagent_concurrency.jsonl` (includes a 1Hz
+`nvidia-smi` + `/api/ps` sampler log covering the whole run).
+
+**Finding 1 (high confidence -- directly observed, not inferred):
+Ollama serializes concurrent requests on this hardware; it does not
+share the GPU.** The sampler log shows exactly one model resident at a
+time throughout the run, GPU utilization mostly idle (0-30%) between
+brief spikes, and repeated full evict-and-reload cycles as each agent's
+turn came up -- `qwen2.5:14b-instruct` (6.13GB) loads, unloads,
+`qwen2.5:7b-instruct` (4.99GB) loads, unloads, `qwen2.5:14b-instruct`
+reloads again. This is the exact keep_alive-eviction mechanism this
+project already found and fixed *for sequential use*
+(`unload_others()`, months ago) -- reproduced here as the dominant cost
+under genuine concurrent load. Wall time stacked close to additively
+across agents (51s, 104s, 205s, 215s) rather than degrading gracefully
+or sharing fairly. Per-token throughput *once a request actually got
+the GPU* was not badly degraded (granite3.1-moe:3b hit 286 tok/s, faster
+than its own solo benchmark; qwen2.5:14b-instruct got ~9.7 tok/s, within
+its normal *auto*-placement range) -- the cost is almost entirely queued
+waiting, not degraded generation. This is a precise, mechanistic
+confirmation of what OpenClaw's own users report anecdotally ("Ollama
+works fine directly, the agent framework is slow") -- not the same
+finding restated, a specific cause identified for it.
+
+**Finding 2 (reported with real uncertainty, not overclaimed): 2 of 4
+agents produced wrong or fully hallucinated answers.**
+`granite3.1-moe:3b` fabricated an entirely fictional file listing
+(`file1.txt`, `readme.md`, `LICENSE` -- none of which exist in that
+workspace) in a single model call, without ever invoking a tool.
+`qwen2.5:14b-instruct` and `qwen2.5:7b-instruct` both correctly listed
+the real files via a real `list_directory` call, then tried to
+`read_file` fabricated names (`file1.txt`, `file2.txt`, `file3.txt`)
+disconnected from what they'd just listed. **This cannot be confidently
+attributed to concurrency** -- each `AgentSession` holds an isolated
+message history with no code-level path for cross-agent contamination,
+so the mechanism would have to be model-level unreliability at
+tool-chaining, not resource contention. No solo-run control was done in
+this pass to isolate the variable. Recorded as an observation, not a
+causal claim.
+
+**What this settles and what it doesn't.** It settles that unmanaged
+concurrent local-agent usage on constrained consumer hardware is a real,
+reproducible problem with a specific, now-understood mechanism (FIFO
+serialization plus full-reload thrashing on every model switch, because
+this card's 8GB can't hold multiple different models resident at once)
+-- not a hypothetical one borrowed from anecdotal reports. It does not
+settle whether a smarter scheduler would meaningfully help (this run was
+deliberately unoptimized -- no test was made of, e.g., keeping the same
+model resident across agents, prioritizing by task urgency, or batching
+same-model requests), and it does not settle the hallucination finding
+one way or the other on causation. Matches the user's own experimental
+design exactly: observe first, optimize second, and only if the pain
+turns out to be real -- which, on the dominant finding, it is.
+
 ## Explicitly not pursuing (for now)
 
 **Datacenter multi-tenant LLM serving.** Phase 8's core mechanism is
