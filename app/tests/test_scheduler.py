@@ -80,3 +80,26 @@ def test_switch_count_is_tracked():
     assert sched.stats["model_switches"] == 1
     assert sched.stats["requests_served"] == 3
     sched.stop()
+
+
+def test_sticky_false_ignores_resident_model_within_a_priority_tier():
+    """The ablation flag: with sticky=False, a same-priority tie should be
+    broken by arrival order alone, not by preferring the resident model --
+    isolates "priority-only" behavior from "sticky-only" behavior."""
+    sched = RamerScheduler(chat_impl=_fake_chat, sticky=False)
+    sched.submit("a1", "modelA", priority=0, messages=[], num_gpu="auto", num_ctx=4096)
+
+    order = []
+    original = sched._chat_impl
+    sched._chat_impl = lambda model, *a, **k: (order.append(model), original(model, *a, **k))[1]
+
+    t_b = threading.Thread(target=sched.submit, args=("b", "modelB", 1, [], "auto", 4096))
+    t_a = threading.Thread(target=sched.submit, args=("a2", "modelA", 1, [], "auto", 4096))
+    t_b.start()
+    time.sleep(0.05)  # modelB is queued well before modelA's follow-up -- arrival order should win
+    t_a.start()
+    t_b.join(timeout=5)
+    t_a.join(timeout=5)
+
+    assert order[0] == "modelB", f"expected arrival order (no sticky preference), got {order}"
+    sched.stop()

@@ -1375,6 +1375,78 @@ something dramatically better without sacrificing the interactive
 agent, that's the first time I'd say there may actually be a company
 here." On this run, on this machine, it did.
 
+## The 4-way ablation: sticky affinity and priority do different jobs (2026-09-10)
+
+Direct follow-up to the clean A-vs-D result, per the proposed
+decomposition: isolate whether sticky affinity, priority, or their
+combination drives the win. Same 4 models/tasks/workspaces/
+`num_predict=128` as before; A and D reused from the prior run (nothing
+about those conditions changed), B and C run fresh, 5 trials each.
+Raw data: `results/exp_scheduler_ablation.jsonl`.
+
+| condition | overall wall time, 5 trials | median | mean switches |
+|---|---|---|---|
+| A -- no coordination (baseline) | 210.6, 201.6, 249.9, 302.6, 175.3s | 210.6s | 6.6 |
+| B -- sticky affinity only, no priority | 207.2, 87.6, 97.9, 177.3, 137.7s | 137.7s | 3.4 |
+| C -- priority only, no sticky affinity | 201.4, 155.5, 212.7, 195.2, 53.0s | 195.2s | 6.0 |
+| D -- sticky + priority (v0, already tested) | 119.0, 151.5, 64.4, 37.8, 117.6s | 117.6s | 3.6 |
+
+| agent | priority | A median | B median | C median | D median |
+|---|---|---|---|---|---|
+| coding | 0 | 201.6s | 113.4s | 166.2s | **38.6s** |
+| personal_assistant | 0 | 205.2s | 58.7s | 111.1s | **53.7s** |
+| research | 1 | 60.1s | 92.4s | 142.9s | 80.8s |
+| background_heartbeat | 2 | 76.3s | 67.2s | **195.2s** | 117.6s |
+
+**Sticky affinity, not priority, is what actually reduces thrashing.**
+B's switch count (mean 3.4) is nearly identical to D's (3.6) and less
+than half of A's (6.6) or C's (6.0) -- priority alone barely moves the
+switch count at all, while sticky affinity alone recovers almost all of
+D's switch reduction by itself. This directly answers the "is it model
+caching or scheduling" question: the throughput/efficiency gain is a
+model-caching effect, not a scheduling effect.
+
+**Priority, not sticky affinity, is what protects the interactive
+agents specifically -- and it needs sticky affinity to do it well.**
+B alone gets `coding` from 201.6s to 113.4s (sticky affinity helps
+everyone somewhat, including the highest-priority agent, just by
+reducing waste). But D gets `coding` all the way to 38.6s -- priority
+layered on top of sticky affinity buys a further 66% beyond what
+stickiness alone achieves. C (priority with no stickiness) shows what
+priority costs *without* that foundation: it barely improves total time
+(195.2s vs A's 210.6s, a weak 7%) while making the lowest-priority agent
+dramatically worse (`background_heartbeat` 76.3s -> 195.2s, +156%, the
+single worst outcome for any agent in any condition tested) -- a bad
+trade, not a good one. Priority reordering alone, without a mechanism
+to avoid thrashing between the two different models sharing the top
+priority tier (coding=14B, personal_assistant=7B), mostly just moves
+*when* the thrashing happens rather than reducing it.
+
+**So the two mechanisms are complementary, not redundant, and each is
+weak without the other.** Sticky affinity is what makes the whole
+system more efficient (fewer wasted reloads, a win with only a mild,
+broadly-shared cost). Priority is what redirects that recovered
+capacity toward the agents that matter most for interactivity -- but
+tested alone, it mostly just reshuffles who pays the thrashing cost,
+extracting a large tax from the lowest-priority agent for a small
+overall gain. v0's actual design (both together) is the right shape,
+not an arbitrary combination of two independently-good ideas.
+
+**Confidence, stated precisely rather than uniformly.** The original
+A-vs-D result is strong: 5/5 non-overlapping trials, a clean effect.
+This 4-way decomposition is directionally clear and consistent across
+every metric (switches, overall time, per-agent latency all point the
+same way), but the individual trial ranges overlap more (e.g. C's
+fastest trial, 53.0s, beats 4 of D's 5 trials) -- real variance at n=5
+per condition, not a second clean separation. Treat the *pattern*
+(sticky drives efficiency, priority needs sticky to protect
+interactivity well) as well-supported; treat exact effect sizes as
+approximate. Same standing caveats as the prior run apply unchanged:
+`num_predict=128` degrades tool-use correctness in every condition
+equally (this decomposition is about latency, not task quality), and
+switch counts come from 0.5Hz `/api/ps` sampling (consistent across all
+four conditions, approximate in absolute terms).
+
 ## Explicitly not pursuing (for now)
 
 **Datacenter multi-tenant LLM serving.** Phase 8's core mechanism is

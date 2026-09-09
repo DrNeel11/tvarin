@@ -55,8 +55,9 @@ class RamerScheduler:
     call submit() (blocking, same call shape as chat()); a single worker
     thread decides ordering and actually talks to Ollama."""
 
-    def __init__(self, chat_impl: Callable):
+    def __init__(self, chat_impl: Callable, sticky: bool = True):
         self._chat_impl = chat_impl  # the real mini_agent.chat, injected so this stays testable without Ollama
+        self.sticky = sticky  # False isolates priority-only behavior for the FIFO/sticky/priority ablation
         self._queue: list[ScheduledRequest] = []
         self._lock = threading.Lock()
         self._new_request = threading.Event()
@@ -88,8 +89,11 @@ class RamerScheduler:
                 return None
             best_priority = min(r.priority for r in self._queue)
             candidates = [r for r in self._queue if r.priority == best_priority]
-            same_model = [r for r in candidates if r.model == self._resident_model]
-            chosen = same_model[0] if same_model else candidates[0]
+            if self.sticky:
+                same_model = [r for r in candidates if r.model == self._resident_model]
+                chosen = same_model[0] if same_model else candidates[0]
+            else:
+                chosen = candidates[0]  # priority-only: no same-model preference within a tier
             self._queue.remove(chosen)
             return chosen
 
@@ -104,7 +108,7 @@ class RamerScheduler:
             # the very first request ever has nothing to switch away from --
             # only count/wait-for a switch once something is actually resident
             is_switch = self._resident_model is not None and req.model != self._resident_model
-            if is_switch:
+            if is_switch and self.sticky:
                 # keep-hot grace: give a same-model follow-up (e.g. this
                 # agent's next turn, or another agent already on this
                 # model) a short window to show up before paying the
