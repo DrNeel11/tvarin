@@ -219,7 +219,7 @@ def ramers_num_gpu(model: str, num_ctx: int) -> object:
     return "auto"
 
 
-def chat(model: str, messages: list, num_gpu, num_ctx: int, tools: list | None = None) -> dict:
+def chat(model: str, messages: list, num_gpu, num_ctx: int, tools: list | None = None, num_predict: int | None = None) -> dict:
     """Streams the response. Found the hard way on a real project: a step
     that reads two source files then writes a full rewritten one can run
     for minutes at ~10 tok/s, and with stream:false that was minutes of
@@ -233,10 +233,18 @@ def chat(model: str, messages: list, num_gpu, num_ctx: int, tools: list | None =
 
     tools defaults to this script's own TOOLS so the CLI usage below is
     unchanged; the app/ package passes its own tool schemas through here
-    instead of duplicating this streaming implementation."""
+    instead of duplicating this streaming implementation.
+
+    num_predict is None (unbounded) by default -- real agent conversations
+    shouldn't have their answers arbitrarily truncated. It exists so a
+    controlled experiment can bound generation length as an independent
+    variable (see PRODUCT_HYPOTHESES.md's scheduler write-up: an unbounded
+    2323-token outlier on one run swamped a scheduling-policy comparison)."""
     options = {"num_ctx": num_ctx}
     if num_gpu != "auto":
         options["num_gpu"] = num_gpu
+    if num_predict is not None:
+        options["num_predict"] = num_predict
     req = urllib.request.Request(
         f"{OLLAMA_HOST}/api/chat",
         data=json.dumps({"model": model, "messages": messages, "tools": tools if tools is not None else TOOLS, "stream": True, "options": options}).encode(),

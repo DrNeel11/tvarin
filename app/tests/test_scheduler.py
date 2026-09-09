@@ -8,7 +8,7 @@ import time
 from app.core.scheduler import RamerScheduler
 
 
-def _fake_chat(model, messages, num_gpu, num_ctx, tools=None):
+def _fake_chat(model, messages, num_gpu, num_ctx, tools=None, num_predict=None):
     time.sleep(0.05)
     return {"message": {"content": f"ok from {model}"}, "eval_count": 1, "eval_duration": 1}
 

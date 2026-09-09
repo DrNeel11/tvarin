@@ -1303,6 +1303,78 @@ which was done here. Stopping to report this honestly rather than
 re-running silently until a favorable result appears -- exactly the
 discipline this project applied to the earlier agentic-load correction.
 
+## Ramer Multi-Agent Scheduler v0: a clean, repeated, non-overlapping result (2026-09-09/10)
+
+Direct re-run of the scheduler comparison with the confound fixed:
+`num_predict=128` bounding every model call (so no run can be swamped by
+an unbounded 2000+-token outlier the way the first attempt was), 5
+trials per condition, Ollama fully unloaded between every trial for the
+same starting state, identical 4 models/tasks/workspaces/priorities
+throughout. Raw data: `results/exp_scheduler_ab_bounded.jsonl`.
+
+| | baseline (naive concurrent) | Ramer scheduler v0 |
+|---|---|---|
+| overall wall time, 5 trials | 210.6, 201.6, 249.9, 302.6, 175.3s | 119.0, 151.5, 64.4, 37.8, 117.6s |
+| median / mean | 210.6s / 228.0s | 117.6s / 98.1s |
+| model switches per trial (mean) | 6.6 | 3.6 |
+| coding (priority 0) median wall | 201.6s | 38.6s |
+| personal_assistant (priority 0) median wall | 205.2s | 53.7s |
+| research (priority 1) median wall | 60.1s | 80.8s |
+| background_heartbeat (priority 2) median wall | 76.3s | 117.6s |
+
+**This is a clean result, not an overlapping one: every scheduler trial
+beat every baseline trial.** The scheduler's *worst* trial (151.5s)
+still beat the baseline's *best* trial (175.3s) -- non-overlapping
+distributions at n=5 each, a real effect, not noise dressed up as one.
+
+**It did exactly what a priority-aware scheduler should do, including
+the tradeoff the user's own hypothesis table anticipated.** The two
+priority-0 ("interactive") agents got dramatically faster --
+`coding` 201.6s -> 38.6s (-81%), `personal_assistant` 205.2s -> 53.7s
+(-74%) -- while the two lower-priority agents got *slower*:
+`research` (priority 1) 60.1s -> 80.8s (+34%), `background_heartbeat`
+(priority 2, lowest) 76.3s -> 117.6s (+54%). This is not a flaw to
+explain away -- it is the mechanism working as designed, trading
+background-task latency for interactive-task latency, exactly the
+tradeoff proposed as the "most important metric" rather than raw total
+time. That total time *also* improved substantially (mean -57%) is a
+separate, additional finding: sticky affinity reduced wasted
+switch-thrashing in aggregate (mean 3.6 vs 6.6 switches/trial), not
+merely reshuffled who waits.
+
+**What this does not yet settle, stated as plainly as the win.** This
+compared the *whole* v0 policy (priority + sticky affinity + keep-hot
+grace together) against naive concurrent calls -- it does not decompose
+which mechanism drives the result, the exact follow-up the user
+proposed next: a three-way FIFO vs. sticky-only vs. priority-aware
+comparison would be needed to say whether the value is "model caching,"
+"scheduling," or "priority-aware scheduling" specifically. Also
+unresolved and visible in this run's raw transcript, in both
+conditions equally: `num_predict=128` measurably degrades tool-use
+correctness (hallucinated filenames, malformed tool-call JSON printed
+as prose, one fabricated `user`/`tool_response` turn) -- an expected
+side effect of truncating a multi-step tool-calling flow mid-thought,
+not a scheduler or placement effect, and a reason this run's task
+*correctness* can't be read as representative of real usage, only its
+*latency* can. The switch counts here come from 0.5Hz `/api/ps`
+sampling (consistent across both conditions, unlike the exact-but-
+asymmetric measurement in the first attempt), which can miss very brief
+loads -- treat the relative comparison (roughly half as many switches)
+as meaningful, the absolute counts as approximate.
+
+**Where this leaves the thesis.** Local multi-agent GPU contention on
+constrained consumer hardware is now demonstrated three times over, each
+more rigorously than the last: anecdotally (OpenClaw's own users),
+directly (Experiment D), and now as something a simple, explainable v0
+scheduler measurably improves under a fair, repeated, confound-free
+comparison. That is a genuinely stronger foundation than this project
+had before Experiment D -- not proof of a company, but the first result
+in this whole thread that clears the bar the user set at the start of
+this line of experiments: "if you can turn 215s/205s/104s/51s into
+something dramatically better without sacrificing the interactive
+agent, that's the first time I'd say there may actually be a company
+here." On this run, on this machine, it did.
+
 ## Explicitly not pursuing (for now)
 
 **Datacenter multi-tenant LLM serving.** Phase 8's core mechanism is

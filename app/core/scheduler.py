@@ -43,6 +43,7 @@ class ScheduledRequest:
     num_gpu: object
     num_ctx: int
     tools: Optional[list]
+    num_predict: Optional[int] = None
     submitted_at: float = field(default_factory=time.time)
     done: threading.Event = field(default_factory=threading.Event)
     result: Optional[dict] = None
@@ -70,9 +71,9 @@ class RamerScheduler:
         self._new_request.set()
 
     def submit(self, agent_id: str, model: str, priority: int, messages: list, num_gpu, num_ctx: int,
-               tools: Optional[list] = None) -> dict:
+               tools: Optional[list] = None, num_predict: Optional[int] = None) -> dict:
         req = ScheduledRequest(agent_id=agent_id, model=model, priority=priority, messages=messages,
-                                num_gpu=num_gpu, num_ctx=num_ctx, tools=tools)
+                                num_gpu=num_gpu, num_ctx=num_ctx, tools=tools, num_predict=num_predict)
         with self._lock:
             self._queue.append(req)
         self._new_request.set()
@@ -125,7 +126,7 @@ class RamerScheduler:
 
             t0 = time.time()
             try:
-                resp = self._chat_impl(req.model, req.messages, req.num_gpu, req.num_ctx, tools=req.tools)
+                resp = self._chat_impl(req.model, req.messages, req.num_gpu, req.num_ctx, tools=req.tools, num_predict=req.num_predict)
                 req.result = resp
             except Exception as e:
                 req.error = e
