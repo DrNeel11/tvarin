@@ -1853,3 +1853,98 @@ not another benchmark, not Cline/Continue specifically, not a landing
 page first. If this resumes and no such findings exist yet, the
 correct move is to ask what happened when real people tried it, not to
 propose new code.
+
+## Qwen3.8-27B IQ2_XXS on the real 8GB card: a huge placement win, and a real-task latency surprise it doesn't explain (2026-09-11)
+
+**Context**: two r/LocalLLM threads were shared for reaction (see the
+reference-memory notes on this) about running Qwen3.8-27B on 16GB
+cards, plus a specific claim of "IQ2_XXS on 8GB VRAM, 16 tok/s, 32k
+context" from a different quant source. Rather than keep treating this
+as reference material, the user asked to actually try it on the real
+machine, using Ramer's own tooling -- a legitimate use of the freeze
+exception (this is exactly the kind of solo technical check the
+project has repeatedly paused for discovery before, done here on
+direct instruction).
+
+**Setup**: pulled `unsloth/Qwen3.8-27B-GGUF:UD-IQ2_XXS` via Ollama's
+Hugging Face integration (`ollama pull hf.co/unsloth/Qwen3.8-27B-GGUF:UD-IQ2_XXS`,
+8.2GB as stored by Ollama). This is the smallest practical IQ quant of
+this model (IQ1_S/IQ1_M exist but are widely reported as too
+lossy to be meaningfully coherent) -- picked because the raw file
+(~6.9GB) is small enough to plausibly fit fully in this card's 8151
+MiB, unlike the 32B Q2_K boundary case (12.3GB, never achieved full
+offload).
+
+**The placement result is the single largest gain measured in this
+project so far.** `ramer benchmark` (the same num_gpu sweep used for
+every prior model) at `num_ctx=4096`:
+
+| num_gpu | tok/s | VRAM |
+|---|---|---|
+| auto (Ollama default) | 5.903 | 5.363 GB |
+| 0 | 2.574 | 0 GB |
+| 32 | 4.904 | 4.378 GB |
+| 54 | 10.421 | 6.451 GB |
+| **65 (full offload, recommended)** | **29.607** | **7.656 GB** |
+
+**+401.6% vs. Ollama's own auto placement** -- auto left ~2.3GB of
+this card's own VRAM completely unused rather than fully offloading a
+model that, it turns out, fits. This is a much bigger gap than the
+14B case (+61%) or the 32B Q2_K case (+6.7%), and it's the cleanest
+illustration yet of Ramer's actual thesis: Ollama's conservative safety
+margin, not the hardware, was the ceiling.
+
+**The real-task result complicates it, honestly.** Same bug-fix task
+and independent-pytest-verification methodology as the 14B-vs-32B-Q2
+experiment (a real `add()` bug, `calc.py`/`test_calc.py`), run via
+`AgentSession` at the recommended `num_gpu=65`, `num_ctx=4096`: the
+model **succeeded** -- correctly diagnosed the bug, read both files,
+wrote the fix, re-ran pytest itself, and independent verification
+confirmed `2 passed`. Tool use was clean (`list_directory` ->
+`run_command` -> `read_file` x2 -> `write_file` -> `run_command`), 5
+steps, git-verified. This alone is a better outcome than the 32B Q2_K
+model got (which never even issued its first tool call).
+
+But **wall-clock time was 313.5s -- slower than the 14B Q4 model's
+157.8s on the identical task**, despite this model's decode throughput
+(29.6 tok/s) being far higher than anything measured for the 14B. The
+transcript shows why: several turns logged `... working (1 tokens,
+126s)`, `(1 tokens, 43s)`, `(1 tokens, 41s)` -- long stretches where
+essentially no visible content was produced, meaning the bottleneck is
+**time-to-first-token / prompt processing (prefill), not decode
+speed**. The first turn alone (deciding to call `list_directory`) took
+126 of the 313.5 total seconds. `ramer benchmark`'s probe measures
+bounded-`num_predict` decode throughput -- it does not measure prefill
+cost, and this is the first case in this project where that gap
+actually mattered: a model can have a dramatically better *decode*
+number and still be slower in a real agentic loop, where every turn
+pays a fresh prefill cost over the growing conversation.
+
+**Direct answer to what this was actually testing**: does an IQ2_XXS
+quant of a 27B model, fully placed with Ramer's tooling, become
+genuinely usable on an 8GB card? **Partially.** It completes a real
+task correctly (better than the 32B Q2_K model did), and the placement
+engine still found a real, large, correctly-reasoned optimization over
+Ollama's default. But "usable" also has to mean "fast enough to be
+worth using instead of a smaller model," and on this one task it
+wasn't -- the 14B Q4 model both succeeded and finished in half the
+time. Whether the slow prefill is inherent to IQ-quant dequantization
+cost (a documented community complaint -- several commenters in the
+shared Reddit threads specifically warn IQ quants can have worse
+prompt-processing than K-quants, though usually framed as a smaller
+effect than measured here), specific to this exact quant/context
+combination, or something about `num_ctx=4096` being unusually tight
+for a 64-layer model's KV cache at this quant, is not established by
+this one run -- flagged as open, not resolved, per this project's own
+discipline against n=1 causal claims.
+
+**Scope note**: this is one task, one quant, one context size --
+exactly the "don't chase one more variant" pattern this project has
+corrected for before. Not pursuing further quant/context sweeps on
+this model right now. The finding worth carrying forward is narrower
+and more useful than "does this model work": **Ramer's placement
+metric (bounded-decode tok/s) and real agentic-task latency can
+diverge, and prefill cost is the reason when they do** -- a genuine
+gap in what the benchmark measures, worth remembering the next time a
+placement result looks unusually large. Results:
+`results/exp_qwen38_27b_iq2xxs_task.jsonl`.
