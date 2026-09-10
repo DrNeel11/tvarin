@@ -1784,3 +1784,72 @@ per the standing discipline should still be "ask before building
 more" -- this section exists precisely because that discipline was
 overridden by explicit instruction this time, not because it stopped
 applying.
+
+## Closing the proxy validation: a real third-party agent, not our own script (2026-09-10)
+
+The one gap the previous section left open -- `mini_agent.py` can't be
+redirected at the proxy without a code change, so nothing had proven
+an *actual*, unmodified, third-party coding-agent tool works through
+Ramer -- was explicitly named as "one more technical thing" worth
+doing before freezing again: **Cline/Continue -> Ramer -> Ollama ->
+Qwen -> real coding task.** Neither Cline nor Continue has a headless
+CLI story usable from this terminal-only environment (both are VS Code
+extensions), so used `aider` instead -- a real, independently-popular,
+pip-installable coding-agent CLI with native, documented Ollama support
+via `OLLAMA_API_BASE` (routed through `litellm` under the hood, the
+same way Cline/Continue reach Ollama). This satisfies the actual
+requirement (a tool that has no idea Ramer exists, using its own normal
+Ollama integration path) without needing a GUI.
+
+**One real complication, fixed properly rather than worked around**:
+`pip install aider-chat` into the project's shared `.venv` downgraded
+`huggingface-hub` (1.4.1) and `tokenizers` (0.22.2) below what
+`transformers 5.16.1` requires (`>=1.5,<2` / `>=0.23.1,<0.24`) --
+aider's own dependency chain (via litellm) pins those exactly, so the
+two tools cannot coexist in one environment. Uninstalled aider from
+`.venv`, restored the compatible versions, and verified
+`import transformers, accelerate, huggingface_hub, tokenizers`
+succeeds again and the full `app/tests/` suite is still 46/46 --
+confirming this app-layer work has zero real dependency on the
+research-phase stack, this was purely a shared-venv collision.
+Installed aider instead into a new isolated `.venv-aider/`
+(gitignored, same pattern as `.venv/`) -- this is the correct fix
+(dependency isolation), not a patch, and should be the default for any
+future third-party tool with its own opinionated pins.
+
+**The actual test**: a fresh scratch git repo (`Stack` class with a
+real bug -- `pop()` used `self.items.pop(0)`, dequeuing instead of
+popping the top, confirmed failing one of two pytest tests before any
+agent touched it). Started `RamerProxyServer` on port 11435. Ran, from
+the isolated venv, completely unmodified:
+`OLLAMA_API_BASE=http://127.0.0.1:11435 aider --model
+ollama_chat/qwen2.5:3b-instruct --yes-always --message "..." stack.py
+test_stack.py` -- no Ramer-aware code anywhere in that invocation.
+Result: aider correctly diagnosed the LIFO-vs-FIFO bug, applied the
+one-line fix (`pop(0)` -> `pop()`), and auto-committed it, entirely
+through the proxy. Independently verified (not trusting aider's own
+report): `pytest -q` in the workspace afterward -> **2 passed**. The
+proxy's own `/ramer/status` after the run confirmed the traffic
+actually went through `RamerScheduler`, not some other path:
+`requests_served: 2, resident_model: "qwen2.5:3b-instruct"`,
+`switch: false` on both (correctly, since it's the same model both
+turns).
+
+**This closes the "does the invisible-infrastructure idea actually
+work" question, for the mechanism at least**: a real third-party
+coding-agent CLI, using its own standard Ollama integration path with
+zero Ramer-specific code, completed a real bug-fix task end-to-end
+through the proxy, and the scheduler's own instrumentation confirms it
+was actually in the loop. What this does NOT establish: whether the
+scheduling/placement layer *matters* to that agent noticeably (this was
+one agent, one model, no concurrent contention to route around --
+exactly the shape Experiment D/the scheduler ablations were built to
+stress, not reproduced here) -- and, as before, whether anyone other
+than this project's own author cares. Per the explicit instruction that
+prompted this section: **stop here.** No more building. The next real
+input has to come from putting this in front of 5-10 people who
+already run local coding agents and watching what they do with it --
+not another benchmark, not Cline/Continue specifically, not a landing
+page first. If this resumes and no such findings exist yet, the
+correct move is to ask what happened when real people tried it, not to
+propose new code.

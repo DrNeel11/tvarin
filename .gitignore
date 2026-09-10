@@ -1,4 +1,5 @@
 .venv/
+.venv-aider/
 .hf_cache/
 __pycache__/
 *.pyc
