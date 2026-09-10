@@ -1547,3 +1547,72 @@ Anchor every outreach message to something specific they already said
 publicly -- it's the difference between a real conversation and a cold
 pitch, and it's also a soft filter for people who actually have the
 problem rather than people replying to being asked in the abstract.
+
+## Update: freezing again after the scheduler arc (2026-09-10)
+
+Since `v0.2-discovery-ready`, this project ran the multi-agent
+concurrency line of experiments through to a real, causally-decomposed
+result: Experiment D (naive concurrent load reproduces OpenClaw's own
+users' complaints, with a specific mechanism -- serialized, thrashing
+model residency), Ramer Multi-Agent Scheduler v0 (built, unit-tested,
+first real A/B confounded by an unbounded-generation outlier, corrected
+with a bounded `num_predict` into a clean 5/5-non-overlapping result:
+median total wall time 210.6s -> 117.6s), and a 4-way ablation
+separating the two mechanisms (sticky affinity drives the efficiency
+win; priority drives interactive-agent latency, but only works well on
+top of stickiness -- priority alone is actively bad for the
+lowest-priority agent). Full detail in the sections above.
+
+**This is now the strongest technical result this project has produced,
+and it is still not evidence that anyone besides its author wants it.**
+Freezing technical work again for the same reason as last time, on the
+same explicit call: the hypothesis is sharp enough now to take to real
+people, and building further on a hypothesis nobody outside this project
+has confirmed is exactly the risk the discovery phase exists to avoid.
+
+**How to state this result to anyone, including in these interviews, so
+it stays honest**: *"In an initial controlled four-agent workload, a
+prototype scheduler reduced median total wall time from 210.6s to 117.6s
+on one RTX 5060 machine."* Not "57% faster" as a general claim -- n=5,
+one machine, one workload, four particular models, bounded generation
+length, one scheduler implementation. Real research evidence, not a
+benchmark result, and the difference matters both for talking to users
+and for not fooling this project's own future self.
+
+**The discovery question sharpens accordingly.** Still don't pitch
+Ramer. Lead with:
+
+1. What local models do you run?
+2. What agents do you use (OpenClaw, Claude Code, Cline, custom
+   scripts, none)?
+3. Do you run more than one at once?
+4. What hardware do you have?
+5. What happens when multiple agents need the GPU at the same time?
+6. Do you notice model loading/unloading, or slowdowns when switching
+   between models or agents?
+7. Have you changed models, quantization, or offload settings to make
+   something work better?
+8. What's the most annoying part of running local AI?
+9. **Show me how you currently do it.** (The most important question in
+   the list -- watch, don't just listen. A demonstrated workaround is
+   worth more than a described one.)
+
+If 5-10 people independently describe some version of "yeah, I fight
+memory/model-loading/context limits when I run more than one thing" --
+*unprompted* -- that's the signal this whole scheduler line of
+experiments was built to go test for. If they don't, or if "Ollama/LM
+Studio already handles this fine for what I actually do" comes back
+instead, that's the answer too, and a faster one to get by asking than
+by building more.
+
+**Explicitly parked, not forgotten, per this same freeze discipline**:
+Experiment E (the same 4-way ablation with realistic, unbounded agent
+tasks instead of `num_predict=128`, adding task-success and
+tool-call-correctness as metrics -- the natural next technical step,
+and the bridge from "research prototype" to "product evidence"), and
+context/KV-cache-aware resource modeling (today's scheduler treats
+"model loaded" as the unit of contention; a real agent's actual
+footprint is model weights *and* its own context/KV state, which is
+where this project's earlier context-aware-placement work becomes
+relevant again). Both stay off the roadmap until discovery gives a
+reason to pick one up.
