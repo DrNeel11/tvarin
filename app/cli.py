@@ -13,6 +13,7 @@ import argparse
 from pathlib import Path
 
 from app.core.orchestrator import Orchestrator
+from app.core.proxy_server import DEFAULT_PROXY_PORT, DEFAULT_UPSTREAM
 
 
 def cmd_doctor(args) -> None:
@@ -84,6 +85,22 @@ def cmd_run(args) -> None:
             print(f"unconfirmed: {verification.get('unconfirmed')}")
 
 
+def cmd_serve(args) -> None:
+    orch = Orchestrator()
+    server = orch.start_proxy_server(port=args.port, upstream=args.upstream, on_log=print)
+    print(f"[ramer] proxy will listen on http://127.0.0.1:{args.port} -> {args.upstream}")
+    print("[ramer] point your agent tool's Ollama base URL here instead of at Ollama directly, e.g.:")
+    print(f"        OLLAMA_HOST=http://127.0.0.1:{args.port}")
+    print("[ramer] models with no cached placement fall back to Ollama's own 'auto' -- run "
+          "`python -m app.cli benchmark <model>` once per model to let Ramer tune it.")
+    print("[ramer] Ctrl+C to stop.\n")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n[ramer] stopping...")
+        server.stop()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="ramer", description="Ramer: hardware-aware local AI coding agent")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -103,6 +120,12 @@ def main() -> None:
     p_run.add_argument("--num-ctx", type=int, default=4096)
     p_run.add_argument("task", nargs="+")
     p_run.set_defaults(func=cmd_run)
+
+    p_serve = sub.add_parser("serve", help="run the Ramer proxy: an Ollama-API-compatible server your agent tools "
+                                            "can point at instead of Ollama directly")
+    p_serve.add_argument("--port", type=int, default=DEFAULT_PROXY_PORT)
+    p_serve.add_argument("--upstream", default=DEFAULT_UPSTREAM, help="the real Ollama server this proxies to")
+    p_serve.set_defaults(func=cmd_serve)
 
     args = parser.parse_args()
     args.func(args)

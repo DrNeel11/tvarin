@@ -8,7 +8,7 @@ validated research prototypes; this app reuses their core logic (GPU
 queries, the probe/cache/pick_best algorithm, the streaming chat loop,
 the git-verification step) rather than duplicating it.
 
-## Status: Milestones 1-4 of 4 done
+## Status: Milestones 1-4 of 4 done, plus a proxy server
 
 Hardware detection, Ollama integration, model selection, placement
 optimization, and a working coding agent (filesystem/terminal/git tools,
@@ -38,6 +38,10 @@ python -m app.cli doctor
 python -m app.cli models
 python -m app.cli benchmark qwen2.5:14b-instruct --num-ctx 8192
 python -m app.cli run qwen2.5:14b-instruct --workdir D:\some\project "fix the bug in auth.py"
+
+# Proxy server -- point an EXISTING agent tool (Cline, Continue, mini_agent.py,
+# anything that already speaks Ollama's API) at this instead of Ollama directly
+python -m app.cli serve --port 11435
 ```
 
 Requires Ollama running locally (`127.0.0.1:11434`) with at least one
@@ -49,13 +53,15 @@ model pulled.
 python -m pytest app/tests/ -v
 ```
 
-**38/38 passing.** These are real integration tests against this
+**46/46 passing.** These are real integration tests against this
 machine's actual hardware, a live Ollama server, and (for the agent
 tests) real model calls -- no mocks, consistent with this project's
-existing rule against faking measurements. Running them requires an
-NVIDIA GPU and at least one Ollama model installed (`qwen2.5:3b-instruct`
-and `qwen2.5:14b-instruct` specifically, since two tests pin those model
-names for speed/quality reasons).
+existing rule against faking measurements (the scheduler's pure-ordering
+tests are the one exception, by design -- see `test_scheduler.py`).
+Running them requires an NVIDIA GPU and at least one Ollama model
+installed (`qwen2.5:3b-instruct` and `qwen2.5:14b-instruct`
+specifically, since some tests pin those model names for speed/quality
+reasons).
 
 ## What's actually implemented
 
@@ -87,6 +93,23 @@ both sit on top of via `Orchestrator`):
   of a real failure during this project's own validation (see
   `PRODUCT_HYPOTHESES.md`): a session that wrote zero files still
   reported "modified 3 files."
+- `scheduler.py` -- `RamerScheduler`, the multi-agent chokepoint: model
+  residency tracking, priority queueing, sticky same-model affinity, a
+  brief keep-hot grace window before paying a model switch. Built and
+  validated against a real reproduced multi-agent contention problem, not
+  speculatively -- see PRODUCT_HYPOTHESES.md's scheduler-arc sections for
+  the full experiment history (Experiment D, the A/B result, the 4-way
+  ablation separating what stickiness vs. priority each actually buy).
+- `proxy_server.py` -- `RamerProxyServer`: an HTTP server that speaks
+  Ollama's own wire protocol (`/api/chat`, `/api/generate`, `/api/tags`,
+  `/api/show`), so an existing agent tool can point at Ramer instead of
+  Ollama with zero changes on its end. `/api/chat` (the tool-calling path
+  real coding agents use) is routed through `RamerScheduler`, with
+  per-model placement resolved from `PlacementEngine`'s cache instead of
+  Ollama's own conservative "auto". This is the actual shape of the
+  product thesis worked out in PRODUCT_HYPOTHESES.md's product-vision
+  section: Ramer as invisible infrastructure underneath whatever agent
+  tool a developer already uses, not a separate app they have to learn.
 - `observability.py` -- logs model/context/placement/tok-s/verification/
   drift per session to `app_sessions.jsonl`, structurally excluding
   message content and task text (checked by a test, not just by

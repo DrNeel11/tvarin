@@ -1690,3 +1690,97 @@ footprint is model weights *and* its own context/KV state, which is
 where this project's earlier context-aware-placement work becomes
 relevant again). Both stay off the roadmap until discovery gives a
 reason to pick one up.
+
+## Ramer Proxy Server v0: the product vision made concrete (2026-09-10)
+
+**Reopens the freeze above, on an explicit instruction, not a drift.**
+Following the freeze, the product framing sharpened further: Ramer
+shouldn't be a standalone app a developer manages -- "a normal
+developer shouldn't know Ramer exists." It should sit invisibly
+underneath whatever agent tools they already use (Claude Code, Cline,
+OpenCode, `mini_agent.py`, etc.), the same way a reverse proxy sits in
+front of a web app. Two architectures were on the table: (1) Ramer as
+an inference-backend proxy the agent talks to directly, or (2) Ramer
+watching/managing Ollama from outside. The scoping note given at the
+time: Option 1 is effectively required, not just cleaner -- the
+already-built `RamerScheduler` (priority queueing, sticky affinity,
+keep-hot grace) only works by sitting *between* the caller and Ollama
+and controlling dispatch order; Ollama exposes no hook to reorder or
+hold back a request from outside, so Option 2 can't reproduce the
+4-way ablation's priority-protects-interactivity result. The user
+agreed to keep the architecture choice out of interviews for now, and
+also gave real interview-methodology guidance worth recording
+verbatim as a rule, not just a preference: **don't ask about Ramer's
+solution before someone has described their own pain** ("would you use
+a runtime that manages GPU memory between agents?" gets polite
+validation; describing current setup/behavior first and only showing
+Ramer *after* the pain is named gets the real signal, "holy shit, can
+I install this?" vs. "yeah, that's cool"). This directly strengthens
+question 9 in the discovery script above ("show me how you currently
+do it") -- the instruction is now explicit: show Ramer only after
+they've answered, never before.
+
+Then, in the same message, the user closed with "start building this
+then" -- immediately after agreeing the interview-first framing was
+right. This is the same pattern as this session's earlier discovery-
+freeze reversal ("I changed my mind, build it"): flagged as a real
+contradiction there, and on recognizing the identical shape here, taken
+as a deliberate instruction rather than something to re-litigate a
+second time. Recorded plainly rather than silently complied with,
+per this doc's own discipline of writing down what actually happened.
+
+**What was built**: `app/core/proxy_server.py` -- `RamerProxyServer`,
+an HTTP server (stdlib `http.server`, no new dependency) that speaks
+Ollama's own wire protocol: `/api/chat` and `/api/generate` (streaming
+and non-streaming), `/api/tags` and `/api/show` (metadata passthrough).
+`/api/chat` -- the path every tool-calling coding agent actually uses
+-- is routed through the existing `RamerScheduler`, so every agent tool
+pointed at Ramer's port shares one residency/priority decision instead
+of each independently racing Ollama (Experiment D's exact failure
+mode). Per-request `num_gpu` is resolved from `PlacementEngine`'s
+existing cache (same cache `ramer benchmark`/`ramer_local.py` write,
+keyed by model+hardware+num_ctx) unless the caller already set one;
+falls back to Ollama's own "auto" with a logged hint on a cache miss,
+deliberately not auto-probing inline (a probe is 1-3 minutes of real
+sweeping -- unacceptable latency on a live agent request).
+`/api/generate` is relayed directly with placement applied but *not*
+scheduler-queued, an explicit v0 scope trim (tool-calling agents are
+the real target; add scheduling to it only if a real client needs it).
+Streaming works by relaying each raw NDJSON chunk from Ollama straight
+to the HTTP client as it arrives (via an `on_chunk` hook threaded
+through `RamerScheduler.submit()` -- a small, backward-compatible
+extension: existing `chat_impl`s that don't accept it are never called
+with it). `GET /ramer/status` exposes live scheduler stats
+(`requests_served`, `model_switches`, `resident_model`, queue length)
+for a future dashboard or CLI status line. Wired into `Orchestrator`
+(`start_proxy_server`) and the CLI (`python -m app.cli serve --port
+11435`), printing the exact `OLLAMA_HOST` a developer would point
+their existing tool at.
+
+**Validated for real, not just unit-tested**: `app/tests/
+test_proxy_server.py` (4 tests, real Ollama, no mocks) covers `/api/tags`
+passthrough, streaming `/api/chat` (asserts multiple NDJSON chunks
+arrive, not one buffered blob), non-streaming `/api/chat`, and a 404 for
+an unhandled path -- all green, plus the full 46-test suite (up from
+38) still green after the scheduler's `on_chunk` extension. Beyond the
+automated tests: manually started the server and sent a real
+tool-calling request (the same `read_file` tool schema `mini_agent.py`
+uses) through the proxy to `qwen2.5:3b-instruct` -- the response came
+back with a correctly-shaped `tool_calls` array, identical to what a
+client talking to Ollama directly would see, confirming the mechanism
+real coding-agent tool-calling depends on survives the relay.
+`/ramer/status` after that call correctly showed `requests_served: 1`,
+`resident_model: qwen2.5:3b-instruct`. Not yet done: pointing an actual
+third-party tool (Cline, Continue) at it end-to-end -- `mini_agent.py`
+itself can't be redirected without a code change (`OLLAMA_HOST` is a
+module-level constant there, not read from environment), so that
+remains the next concrete validation step if this thread continues.
+
+**What this is and isn't**: a real, working v0 of the actual product
+shape discussed above -- not a mockup, not a plan. It does not change
+the state of customer discovery, which is still the one substantive
+thing not yet done in this project. If this resumes again, the default
+per the standing discipline should still be "ask before building
+more" -- this section exists precisely because that discipline was
+overridden by explicit instruction this time, not because it stopped
+applying.

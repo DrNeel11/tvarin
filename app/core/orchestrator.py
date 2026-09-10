@@ -14,6 +14,7 @@ from app.core.hardware import HardwareSnapshot, detect_hardware
 from app.core.model_runtime import CURATED_MODELS, ModelInfo, OllamaRuntime, recommend_model
 from app.core.observability import log_session
 from app.core.placement import PlacementEngine, PlacementResult
+from app.core.proxy_server import DEFAULT_PROXY_PORT, DEFAULT_UPSTREAM, RamerProxyServer
 
 
 class Orchestrator:
@@ -50,6 +51,10 @@ class Orchestrator:
             model=model, workspace=workspace, num_gpu=num_gpu, num_ctx=num_ctx,
             permission_callback=permission_callback, baseline_tok_s=baseline_tok_s,
         )
+
+    def start_proxy_server(self, port: int = DEFAULT_PROXY_PORT, upstream: str = DEFAULT_UPSTREAM,
+                            on_log: Optional[Callable[[str], None]] = None) -> RamerProxyServer:
+        return RamerProxyServer(upstream=upstream, port=port, on_log=on_log)
 
     def run_agent_task(self, session: AgentSession, task: str, on_event: Callable) -> dict:
         result = session.run(task, on_event)

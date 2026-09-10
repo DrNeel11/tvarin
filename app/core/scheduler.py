@@ -44,6 +44,7 @@ class ScheduledRequest:
     num_ctx: int
     tools: Optional[list]
     num_predict: Optional[int] = None
+    on_chunk: Optional[Callable[[dict], None]] = None  # streaming relay hook for the proxy server; unused by chat_impls that don't accept it
     submitted_at: float = field(default_factory=time.time)
     done: threading.Event = field(default_factory=threading.Event)
     result: Optional[dict] = None
@@ -72,9 +73,11 @@ class RamerScheduler:
         self._new_request.set()
 
     def submit(self, agent_id: str, model: str, priority: int, messages: list, num_gpu, num_ctx: int,
-               tools: Optional[list] = None, num_predict: Optional[int] = None) -> dict:
+               tools: Optional[list] = None, num_predict: Optional[int] = None,
+               on_chunk: Optional[Callable[[dict], None]] = None) -> dict:
         req = ScheduledRequest(agent_id=agent_id, model=model, priority=priority, messages=messages,
-                                num_gpu=num_gpu, num_ctx=num_ctx, tools=tools, num_predict=num_predict)
+                                num_gpu=num_gpu, num_ctx=num_ctx, tools=tools, num_predict=num_predict,
+                                on_chunk=on_chunk)
         with self._lock:
             self._queue.append(req)
         self._new_request.set()
@@ -130,7 +133,9 @@ class RamerScheduler:
 
             t0 = time.time()
             try:
-                resp = self._chat_impl(req.model, req.messages, req.num_gpu, req.num_ctx, tools=req.tools, num_predict=req.num_predict)
+                extra = {"on_chunk": req.on_chunk} if req.on_chunk is not None else {}
+                resp = self._chat_impl(req.model, req.messages, req.num_gpu, req.num_ctx,
+                                        tools=req.tools, num_predict=req.num_predict, **extra)
                 req.result = resp
             except Exception as e:
                 req.error = e
