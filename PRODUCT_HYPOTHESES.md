@@ -1464,6 +1464,63 @@ equally (this decomposition is about latency, not task quality), and
 switch counts come from 0.5Hz `/api/ps` sampling (consistent across all
 four conditions, approximate in absolute terms).
 
+## 14B Q4 vs 32B Q2 on a real coding task: throughput isn't the question that matters (2026-09-10)
+
+Direct follow-up to the Q2 quantization finding, per the proposed real
+test: same real coding-agent task, on the identical bug, run once on
+each model at its own Ramer-recommended placement (`num_gpu=37` for
+both, cached at ctx=4096) -- `qwen2.5:14b-instruct` vs
+`qwen2.5:32b-instruct-q2_K`. The task: a real Python project with one
+genuine bug (`add()` returns `a - b`), one failing test. Success
+criterion is **objective, not self-reported**: an independent `pytest`
+run after the agent finishes, checked regardless of what either model
+claimed -- the same discipline as the agent's own git-based
+verification step, applied here to task correctness instead of file
+changes. Raw data: `results/exp_quality_14b_vs_32bq2.jsonl`.
+
+Both models hit the identical, unplanned obstacle: `pytest` (the
+standalone exe) is blocked by a Device Guard policy in this environment
+-- a real confound to plan around next time, but an *identical* one for
+both models, so it doesn't bias the comparison, only makes the task
+legitimately harder for both.
+
+**14B Q4 succeeded.** Adapted to the blocked command by switching to
+`search_files` + `read_file` to diagnose manually, correctly identified
+the actual bug, fixed it via `write_file`, and was honest that it
+couldn't self-verify given the block ("please confirm manually"). 8
+steps, 157.8s. Independent check: **both tests pass.**
+
+**32B Q2 failed -- not on reasoning, on execution.** It correctly used
+`search_files` to find `test_calc.py`, said in prose "I will read the
+content of `test_calc.py`" -- and then never actually issued the
+`read_file` tool call. No tool call followed, so the agent loop
+correctly treated that as a finished response and stopped. It never
+read either file, never diagnosed the bug, never touched `calc.py`. 3
+steps, 214.9s (slower wall time than 14B despite doing far less work,
+consistent with its much lower raw tok/s). Independent check: **test
+still fails, unchanged from baseline.**
+
+**This directly answers the question this experiment was scoped to
+ask.** "Is 32B Q2 a useful model on an 8GB consumer GPU, or merely a
+model that technically runs?" -- on this one real task: merely
+technically runs. The earlier throughput measurement (7.39 tok/s,
++35.8% vs auto) was real and Ramer's placement optimization did its job
+correctly on both models -- but placement quality and model usefulness
+are separate axes, and this is the first time in this project's history
+they've been tested against each other directly rather than assumed to
+move together. A faster-per-token model that never completes the task
+is not more useful than a slower one that does.
+
+**Stated with the precision this project has tried to maintain
+throughout**: n=1 per model, one task, one bug, one confounding
+environment quirk shared by both. Not a statistically powered claim
+about `qwen2.5:32b-instruct-q2_K` generally -- a real, decisive,
+independently-verified result on this one comparison, exactly the scope
+this follow-up was proposed at. Per the explicit plan, this closes the
+Q2 boundary-case thread: the throughput question and the quality
+question have both now been asked and answered on this hardware, and
+neither should be extrapolated further without more samples.
+
 ## Explicitly not pursuing (for now)
 
 **Datacenter multi-tenant LLM serving.** Phase 8's core mechanism is
