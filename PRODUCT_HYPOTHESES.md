@@ -238,6 +238,23 @@ probe -- caught by actually running the tool against a large enough model,
 exactly the kind of finding a bigger real-usage pass was expected to
 surface.
 
+**Follow-up (2026-09-10): does more aggressive quantization change the
+boundary case?** Same model family, same card, `qwen2.5:32b-instruct`
+now at **Q2_K** (12.3GB on disk, vs. Q4_K_M's 19GB) instead of assuming
+the answer. Real probe: `num_gpu=37`, **7.394 tok/s**, 7.91GB VRAM,
+**+35.8%** over Ollama's auto -- more than double the Q4 case's 3.29
+tok/s, and a placement gain 5x larger. Same VRAM-cliff shape as every
+prior finding (smooth 0.96-6.1 tok/s climb through 32 layers, then a
+sharp collapse at 43 layers -- this card's ~7.9GB physical ceiling,
+unchanged). This nudges the boundary case's verdict without overturning
+it: Q4 32B was "unusable regardless of placement," Q2 32B is
+"borderline usable, not just a benchmark number" -- still far from the
+14B case's fluency, and this measurement is throughput only. It says
+nothing about output quality, and Q2 quantization is well-documented
+(including in a Reddit thread already cited in this file) to cost real
+coherence -- "fits and runs meaningfully faster" is not the same claim
+as "good enough to use," and this project hasn't tested the latter.
+
 ## First real-usage sample (2026-09-05, compressed into one session)
 
 Per the 7-day real-usage plan, generated a first small sample now rather
