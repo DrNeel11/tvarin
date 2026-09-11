@@ -1948,3 +1948,85 @@ diverge, and prefill cost is the reason when they do** -- a genuine
 gap in what the benchmark measures, worth remembering the next time a
 placement result looks unusually large. Results:
 `results/exp_qwen38_27b_iq2xxs_task.jsonl`.
+
+## OpenAI-compatible surface: a real third-party tool needed it, so it exists now (2026-09-11)
+
+**How this came up**: asked directly "how to use with pi agent now" --
+`pi` (`@earendil-works/pi-coding-agent`, an npm-installed real coding
+agent CLI already in use on this machine, separate from anything built
+in this project) has its own Ollama provider configured at
+`~/.pi/agent/models.json`. Checked that file rather than guessing:
+`baseUrl: "http://localhost:11434/v1"`, `api: "openai-completions"`.
+That's the load-bearing fact -- `pi` talks to Ollama's **OpenAI-
+compatible** surface, not its native `/api/chat`. Pointing `pi` at
+Ramer's existing proxy (which only implemented `/api/chat`/
+`/api/generate`) would have silently 404'd. Rather than hand back an
+instruction that doesn't work, added real OpenAI-compat support to
+`proxy_server.py`.
+
+**What was added**: `POST /v1/chat/completions` (streaming via SSE and
+non-streaming) and `GET /v1/models`, both routed through the same
+`RamerScheduler`/`PlacementEngine` path `/api/chat` already uses --
+same residency/priority/placement benefits, different wire format on
+top. `_ollama_tool_calls_to_openai()` handles the one real, structural
+difference between the two tool-call formats: Ollama hands back parsed
+tool-call arguments as an object; OpenAI's wire format requires a
+JSON-encoded string in that field.
+
+**Two real bugs found only by actually running `pi` against it, not
+by reading either API's docs**:
+
+1. `pi` sends message content as a list of parts
+   (`[{"type": "text", "text": "..."}]`), valid in OpenAI's spec but
+   rejected by Ollama's native API, which requires `content` to be a
+   plain string. An assistant message that just made a tool call also
+   carries `content: null` for the same reason.
+2. The sharper one: on `pi`'s *second* turn, it replays its own prior
+   assistant message -- including the tool call from turn one -- back
+   as conversation history, with `tool_calls[].function.arguments` as
+   the JSON-encoded **string** OpenAI's format requires (and this
+   proxy's own `/v1` responses produce). Relayed verbatim to Ollama,
+   this breaks Ollama's request parsing outright, with a genuinely
+   confusing error: `"Value looks like object, but can't find closing
+   '}' symbol"` -- Ollama's parser choking on a string value where it
+   expects an object. First-turn tool calls worked fine end-to-end
+   before this was found; only a real second turn (replayed history)
+   exposed it. Fixed in `_normalize_openai_messages()`: flattens
+   list-content, turns `null` content into `""`, and converts any
+   replayed `tool_calls[].function.arguments` back from a JSON string
+   into a parsed object before forwarding to Ollama.
+
+Both were found by capturing real request payloads `pi` actually sent
+(dumped to a scratch file, inspected, deleted -- not guessed from
+either API's documentation) after two silent failures (`502` on the
+first turn, then a `Connection error` on the second turn caused by an
+unrelated proxy-restart race, then the real parsing error once the
+race was fixed and the actual second-turn payload could be captured
+cleanly).
+
+**Verified end-to-end with real `pi`, not just the test suite**:
+pointed `pi`'s own `models.json` `baseUrl` at
+`http://127.0.0.1:11435/v1` (left in that state -- this is now `pi`'s
+real, working, permanent configuration on this machine, not a reverted
+experiment) and ran two non-interactive real sessions:
+`pi -p --provider ollama --model ollama/qwen2.5:3b-instruct "Reply with the single word: hello"`
+-> `hello`; and a tool-calling task asking it to run a bash command via
+its own `bash` tool -- `pi` correctly called the tool, got the real
+result back, and reported it correctly, with `/ramer/status`
+confirming the traffic actually went through `RamerScheduler`
+(`requests_served` incrementing, correct resident model, `switch:
+false`). Also added 5 new automated tests (`app/tests/
+test_proxy_server.py`, real Ollama, no mocks): `/v1/models`,
+non-streaming and streaming `/v1/chat/completions` shape checks, a
+tool-call-arguments-are-a-string assertion, and a regression test
+pinned specifically to the second bug above (a replayed assistant
+tool-call message must not break the request). Full suite: **51/51
+passing**, up from 46.
+
+**Why this matters beyond `pi` specifically**: OpenAI's chat-completions
+shape is the de facto lingua franca most agent tooling speaks by
+default (LangChain, LiteLLM-backed tools, anything using an
+"OpenAI-compatible" provider slot) -- this wasn't a one-off
+accommodation for one CLI, it's the same "invisible infrastructure"
+thesis extended to cover the wire format most tools actually use, not
+just Ollama's own native one.

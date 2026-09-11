@@ -53,7 +53,7 @@ model pulled.
 python -m pytest app/tests/ -v
 ```
 
-**46/46 passing.** These are real integration tests against this
+**51/51 passing.** These are real integration tests against this
 machine's actual hardware, a live Ollama server, and (for the agent
 tests) real model calls -- no mocks, consistent with this project's
 existing rule against faking measurements (the scheduler's pure-ordering
@@ -101,15 +101,21 @@ both sit on top of via `Orchestrator`):
   the full experiment history (Experiment D, the A/B result, the 4-way
   ablation separating what stickiness vs. priority each actually buy).
 - `proxy_server.py` -- `RamerProxyServer`: an HTTP server that speaks
-  Ollama's own wire protocol (`/api/chat`, `/api/generate`, `/api/tags`,
-  `/api/show`), so an existing agent tool can point at Ramer instead of
-  Ollama with zero changes on its end. `/api/chat` (the tool-calling path
-  real coding agents use) is routed through `RamerScheduler`, with
-  per-model placement resolved from `PlacementEngine`'s cache instead of
-  Ollama's own conservative "auto". This is the actual shape of the
-  product thesis worked out in PRODUCT_HYPOTHESES.md's product-vision
-  section: Ramer as invisible infrastructure underneath whatever agent
-  tool a developer already uses, not a separate app they have to learn.
+  both Ollama's own wire protocol (`/api/chat`, `/api/generate`,
+  `/api/tags`, `/api/show`) AND the OpenAI-compatible chat API
+  (`/v1/chat/completions`, `/v1/models`), so an existing agent tool can
+  point at Ramer instead of Ollama with zero changes on its end --
+  whichever surface it already speaks. The tool-calling paths on both
+  surfaces are routed through `RamerScheduler`, with per-model placement
+  resolved from `PlacementEngine`'s cache instead of Ollama's own
+  conservative "auto". This is the actual shape of the product thesis
+  worked out in PRODUCT_HYPOTHESES.md's product-vision section: Ramer as
+  invisible infrastructure underneath whatever agent tool a developer
+  already uses, not a separate app they have to learn. The OpenAI-compat
+  surface exists because a real tool (the `pi` CLI) needed it -- Ollama's
+  native and OpenAI-compatible tool-call formats differ in one real way
+  (parsed-object vs. JSON-string arguments), handled by
+  `_normalize_openai_messages`/`_ollama_tool_calls_to_openai`.
 - `observability.py` -- logs model/context/placement/tok-s/verification/
   drift per session to `app_sessions.jsonl`, structurally excluding
   message content and task text (checked by a test, not just by
