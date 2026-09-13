@@ -2085,3 +2085,58 @@ combination in this project (Experiment B, the controlled 2x2x2 grid,
 the 14B-vs-32B-Q2 task), which is why it's reported with more
 confidence than a first-ever result would deserve, not because this
 one run alone proves it.
+
+## Same A/B with a bigger model: neither condition finished, and Ramer was slower to get there (2026-09-13)
+
+Asked directly to repeat the pi with/without comparison on a bigger
+model. Chose `qwen2.5:32b-instruct-q2_K` deliberately over a repeat of
+the 14B case -- it's the already-documented boundary-case model in this
+project (large enough that it's failed real agentic tasks before, see
+the 14B-vs-32B-Q2 experiment), so it tests the honest question rather
+than one likely to just repeat a guaranteed win. Same controlled
+methodology: explicit `keep_alive: 0` unload of every resident model,
+fresh `git checkout`/`clean` workspace reset, before each run.
+
+| condition | wall-clock | outcome |
+|---|---|---|
+| **with Ramer** (num_gpu=37, cached @ 7.394 tok/s) | 203.7s | did not finish -- still diagnosing when `pi`'s run ended |
+| **without Ramer** (Ollama auto) | 69.8s | did not finish -- still diagnosing when `pi`'s run ended |
+
+**Neither run fixed the bug.** Independently verified both times:
+`1 failed, 1 passed`, unchanged from the reset state. This directly
+replicates the earlier finding (the 14B-vs-32B-Q2 `AgentSession`
+experiment) with a completely different real agent tool -- `pi` doing
+the diagnosing this time, not `mini_agent.py`/`AgentSession` -- and
+gets the same answer: this model, at this quant, is not reliable
+enough to finish this class of real task, regardless of which tool is
+driving it.
+
+**The part that doesn't fit the pattern, reported plainly rather than
+smoothed over**: on the one measurement available, the *with-Ramer* run
+took roughly 3x longer wall-clock (203.7s vs. 69.8s) than the
+without-Ramer run, despite Ramer's own cached placement having the
+higher *decode* throughput for this model (7.394 vs. Ollama auto's
+~5.4 tok/s). `/ramer/status`'s own serve log shows why: the first
+request in the with-Ramer run alone took 178s (model load + first
+generation combined) before a second, shorter request -- consistent
+with this model sitting right at this card's real usable VRAM ceiling
+(7.912GB requested against roughly a 7.76GB usable boundary, per
+Experiment B's own finding), where `num_gpu=37`'s slightly larger
+footprint may be triggering the same kind of driver-level VRAM
+paging/overcommit Experiment B measured directly, while Ollama's more
+conservative auto default has more headroom to load cleanly. This is a
+plausible mechanism, not a confirmed one -- not established by this one
+run, and neither run actually reached the decode phase long enough for
+the throughput difference to matter, since both were dominated by
+load/first-turn cost and neither completed the task.
+
+**What this actually shows, stated at the right size**: (1) real,
+second confirmation (via a second independent tool) that this
+model+quant fails this class of real task outright -- the more
+load-bearing finding; (2) a genuine, unresolved open question about
+whether Ramer's placement can impose a real cold-load cost specifically
+at the VRAM boundary, which the earlier bounded-decode-only probes
+never measured and this project has not yet isolated. Not chasing the
+load-time question further right now -- flagged as open, consistent
+with this project's standing discipline against turning one
+suggestive n=1 result into a new conclusion.
