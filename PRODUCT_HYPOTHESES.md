@@ -2030,3 +2030,58 @@ default (LangChain, LiteLLM-backed tools, anything using an
 accommodation for one CLI, it's the same "invisible infrastructure"
 thesis extended to cover the wire format most tools actually use, not
 just Ollama's own native one.
+
+## pi agent, with vs. without Ramer: a real A/B on a real third-party tool (2026-09-13)
+
+Directly requested: compare `pi` on the identical real task, with vs.
+without Ramer's proxy in the loop. Same bug-fix fixture used throughout
+this project (`calc.py`'s `add()` returns `a - b`; `test_calc.py`
+independently checks it), same model (`qwen2.5:14b-instruct`), same
+non-interactive `pi -p` invocation.
+
+**Controlled properly, not just run twice.** The first attempt at this
+comparison was invalid and corrected before reporting: the model was
+already warm in Ollama from earlier testing before the "with Ramer" run
+started, which would have let it skip load time the "without Ramer" run
+couldn't -- not a fair test of placement, just a warm-vs-cold-start
+artifact. Redone with an explicit `keep_alive: 0` unload and a fresh
+`git checkout -- . && git clean -fd` workspace reset before *each* run,
+so both conditions start from the same real cold state. This is the
+same discipline this project applied to itself early on (single-sample
+noise, warm/cold VRAM state) turned outward onto a live comparison
+instead of caught after the fact.
+
+**Setup**: `pi`'s own `~/.pi/agent/models.json` `baseUrl` switched
+between `http://127.0.0.1:11435/v1` (Ramer's proxy) and
+`http://127.0.0.1:11434/v1` (Ollama directly) between runs -- the only
+variable changed. Ramer's cached placement for this model+context:
+`num_gpu=37` (vs. Ollama's own default, which the proxy does NOT
+override when going direct). Independent verification via `pytest`
+after each run, not `pi`'s own summary -- one run's final narration was
+oddly confused despite the fix being real, another reminder that a
+model's prose and its actual actions can diverge and only the
+independently-checked outcome should be trusted.
+
+| condition | wall-clock | fix correct? (independently verified) |
+|---|---|---|
+| **with Ramer** (num_gpu=37) | **55.4s** | yes -- 2 passed |
+| **without Ramer** (Ollama auto) | **89.2s** | yes -- 2 passed |
+
+**Ramer finished in 62% of the time** (55.4s vs. 89.2s, ~38% faster
+end-to-end) on a real third-party agent doing a real task, both runs
+cold-started and independently verified. Both conditions produced a
+correct fix -- this isn't a capability difference, it's the same
+placement gain already measured for this exact model
+(`num_gpu=37`, +61% on bounded decode throughput) showing up in a real
+agentic workflow's wall-clock time, through a tool that has no idea
+Ramer exists.
+
+**Scope, stated plainly**: n=1 per condition. Real, cold-started,
+independently verified -- not a synthetic benchmark -- but one run each,
+consistent with this project's standing discipline against
+overclaiming from a single comparison. The result is directionally
+consistent with every other measurement of this exact model+placement
+combination in this project (Experiment B, the controlled 2x2x2 grid,
+the 14B-vs-32B-Q2 task), which is why it's reported with more
+confidence than a first-ever result would deserve, not because this
+one run alone proves it.
