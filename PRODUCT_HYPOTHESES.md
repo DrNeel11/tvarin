@@ -2257,3 +2257,30 @@ precise and more defensible thesis than either single experiment
 alone would support. Per the framing this experiment was proposed
 under: this closes the validation-experiment thread. Next input has to
 come from real discovery interviews, not another benchmark.
+
+### Closing synthesis: the validation-experiment arc, in one table
+
+| workload | result | what it demonstrates |
+|---|---|---|
+| pi + Qwen2.5-14B, coding | 55.4s vs. 89.2s | ~38% end-to-end improvement when decode is a real share of the work |
+| pi + Qwen2.5-32B-Q2_K, coding | neither run succeeds | placement cannot compensate for inadequate model/task capability |
+| pi + Qwen2.5-14B, Wikipedia research | 19.8s vs. 19.9s | no meaningful benefit when network/tool latency dominates |
+
+**The thesis this project carries into discovery, stated at the size
+the evidence actually supports**: Ramer is a local AI runtime that
+optimizes GPU placement, model residency, memory, and scheduling for
+agent workloads. Its benefit is workload-dependent -- it matters most
+when local inference is the bottleneck, and provides little benefit
+when an agent is primarily waiting on external tools or networks. It
+does not make an unreliable model reliable. Three real cases, two
+different third-party tools, one of them a negative result this
+project didn't design to get -- that combination is what makes the
+narrower claim defensible in a way a single benchmark win never would
+be.
+
+**This closes the validation-experiment arc, by explicit agreement.**
+No further benchmarks, proxy fixes, or model comparisons are planned.
+The next input this project needs is real discovery interviews -- see
+"How to use this document" above for the standing question script.
+If this resumes and no interview findings exist yet, that is the only
+thing to pick up next.
