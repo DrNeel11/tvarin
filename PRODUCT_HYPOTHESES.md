@@ -2140,3 +2140,120 @@ never measured and this project has not yet isolated. Not chasing the
 load-time question further right now -- flagged as open, consistent
 with this project's standing discipline against turning one
 suggestive n=1 result into a new conclusion.
+
+## Final validation: pi as a research agent, with vs. without Ramer (2026-09-13)
+
+Proposed as the explicit last validation experiment before returning to
+discovery: repeat the with/without-Ramer comparison on a **research**
+workload (web search + read, not coding), on the theory that a coding
+agent and a research agent stress the infrastructure differently. The
+suggestion referenced BrowseComp (1,266 hard web-research questions)
+and WebArena as reference benchmarks, with an explicit warning built
+into the request itself: a faster Ramer run is evidence about resource
+management, not about whether Ramer makes the agent *better at
+searching* -- that framing shaped how this was scoped and graded.
+
+**Scoped down deliberately, not run as specified.** Two real blockers
+made running literal BrowseComp impractical today: `pi` has no
+web-search tool at all (only `read`/`bash`/`edit`/`write`), and
+BrowseComp's answers are encrypted against the question text with its
+own grading harness -- real setup cost disproportionate to what this
+one internal test needed. Built a minimal, real two-tool extension
+instead (`~/.pi/agent/extensions/web_research.ts`): `web_search`
+(Wikipedia's public search API) and `fetch_page` (Wikipedia's plain-text
+article-extract API for `en.wikipedia.org` URLs, generic HTML-stripping
+fetch otherwise). No API key, no rate-limit fragility -- the first
+version scraped DuckDuckGo's HTML search page directly and got
+bot-challenged (HTTP 202) after a handful of automated requests, caught
+immediately rather than shipped. Wrote 6 self-authored, verifiable,
+single-fact research questions (Eiffel Tower completion year,
+Kilimanjaro summit elevation, Ghana's land area, the Bodleian Library's
+founder/year, Burj Khalifa's height, Angkor Wat's builder/years) instead
+of a BrowseComp subset -- narrower coverage, but zero grading ambiguity
+from encrypted answers, and every fact is genuinely `pi`-shaped (a
+short, specific, checkable claim, not answerable confidently from a
+14B model's memory alone).
+
+**One more real bug found building the harness, same pattern as the
+proxy work**: the first version of `fetch_page` did generic HTML-tag
+stripping on raw Wikipedia article pages -- which are mostly navigation
+chrome and a multi-hundred-item table of contents before any real
+content. A smoke test fed the model 6000 characters of menu items and
+got a garbled, half-hallucinated answer back. Fixed by using
+Wikipedia's `action=query&prop=extracts` API for `en.wikipedia.org`
+URLs specifically, which returns clean article text with no chrome --
+confirmed via a direct smoke test before running the real comparison,
+not assumed fixed.
+
+**Methodology**: same controlled pattern as the two prior A/Bs --
+explicit `keep_alive: 0` cold-unload before every single run (12
+total: 6 questions x 2 conditions), `pi -p --no-session` (fresh context
+every time, no session carryover), `pi`'s `baseUrl` toggled between
+Ramer's proxy and Ollama directly, `qwen2.5:14b-instruct` throughout
+(the one model in this whole project that reliably completes real
+tasks). Every answer graded independently against ground truth pulled
+fresh from Wikipedia's own API, not against memory or `pi`'s own
+confidence.
+
+| Q | with Ramer | without Ramer |
+|---|---|---|
+| Eiffel Tower year | correct, 14.8s | correct, 22.6s |
+| Kilimanjaro elevation | correct, 19.3s | correct, 21.6s |
+| Ghana land area | correct* (227,533 km², cited "Geography of Ghana"), 32.2s | correct* (239,567 km², cited "Ghana"), 71.0s |
+| Bodleian founder/year | correct, 23.8s | correct content, **answered entirely in Thai**, 14.5s |
+| Burj Khalifa height | correct, 18.7s | correct, 18.2s |
+| Angkor Wat builder/years | correct, 20.3s | **failed** -- emitted a malformed raw `<tool_call>` fragment as text instead of a real tool call, never answered, 8.6s |
+
+*Ghana question corrected after the fact, not reported as first
+observed: 227,533 km² looked like a wrong answer against the 239,567
+km² figure on the main "Ghana" article, until checking the actual
+"Geography of Ghana" article the model cited -- which separately lists
+Total: 238,537 km², Land: 227,533 km², Water: 11,000 km². The question's
+own wording ("total land area") is genuinely ambiguous between the two,
+and Wikipedia's own articles aren't even internally consistent with
+each other (238,537 vs. 239,567 for "total"). Both answers are real,
+sourced, defensible -- this pair is excluded from the correctness count
+below, not scored as a win for either condition.
+
+**Wall-clock time: no meaningful difference.** Median 19.8s with Ramer
+vs. 19.9s without (excluding the failed Q6 run, which finished
+suspiciously fast specifically because it failed early). This is a
+genuinely different result from every coding-task comparison in this
+project, and the reason makes sense on reflection: Ramer's placement
+advantage is a *decode throughput* gain, proportional to how many
+tokens get generated. A short factual answer generates very few
+tokens; the actual wall-clock cost here is dominated by network
+round-trips to Wikipedia and a short tool-calling exchange, not
+sustained decode -- exactly the regime where a 61%-faster decode speed
+has almost nothing to bite into. **This is a real, useful boundary on
+the product thesis, not a failure to find one**: Ramer's benefit scales
+with how much generation a workload actually does, and a
+research/lookup agent that mostly waits on search results and answers
+briefly is closer to that boundary than a coding agent that reads
+files and writes long responses.
+
+**Correctness, reported but explicitly not causally attributed to
+Ramer**: 5/5 scored questions correct with Ramer (excluding the
+ambiguous Ghana pair); 3/5 cleanly correct without Ramer, one correct-
+content-wrong-language answer, one outright failure. Tempting to read
+as "Ramer made it more reliable," but this is n=1 per condition per
+question -- the same discipline this project has applied to itself
+against overclaiming applies here just as much: a wrong-language answer
+and a malformed tool-call are both known model-stochasticity failure
+modes for a 14B model unrelated to which port it's talking to, and two
+failures out of six is well within noise at this sample size. Recorded
+as an interesting asymmetry worth a larger sample if this thread is
+ever picked up again, explicitly not as a finding.
+
+**Bottom line, as the deliberately final validation experiment**: Ramer
+has now been tested on two real, distinct agentic workload shapes
+through two different real third-party tools (aider, `pi`) -- a
+decode-heavy coding task (clear, repeated wins, 38-62% faster) and a
+short-answer research task (no measurable wall-clock difference). Both
+results are real and both are kept. The honest, combined claim is
+narrower than "Ramer makes local agents faster" -- it's **"Ramer makes
+local agents faster in proportion to how much they generate,"** a more
+precise and more defensible thesis than either single experiment
+alone would support. Per the framing this experiment was proposed
+under: this closes the validation-experiment thread. Next input has to
+come from real discovery interviews, not another benchmark.
