@@ -1,133 +1,158 @@
 # Ramer
 
-Two small command-line tools that make local Ollama inference on a
-single Windows machine faster and more reliable, plus the research that
-led to them:
+Ramer sits between the local coding/research agent you already use
+(Claude Code, Cline, aider, the `pi` CLI, anything that talks to Ollama
+natively or via an OpenAI-compatible endpoint) and Ollama itself. You
+point your agent tool at Ramer's port instead of Ollama's. Nothing
+about your workflow changes. Underneath, Ramer:
 
-- **`scripts/ramer_local.py`** -- finds the GPU/CPU layer split for a
-  given model that actually maximizes throughput on your hardware
-  (Ollama's own default is deliberately conservative and leaves real
-  performance on the table), caches it, and watches for it going stale.
-- **`scripts/mini_agent.py`** -- a minimal Cline-style coding agent (read
-  file / write file / list dir / run command, tool-calling via
-  `/api/chat`) that runs on top of a Ramer-optimized placement instead of
-  Ollama's default.
+- finds the GPU/CPU layer split that actually maximizes throughput for
+  each model at the context length you're using (Ollama's own default
+  is deliberately conservative and leaves real performance on the
+  table -- see "Validated results" below), and
+- arbitrates when more than one agent or model wants the same GPU at
+  once, instead of letting them independently thrash it.
+
+You don't run a probe or edit a config for each model. You install
+Ramer, point your existing tool's base URL at it, and keep working.
 
 ## Status
 
-This started as a 10-phase research project on tiered/remote memory for
-local LLM inference (`docs/ARCHITECTURE.md`). That research is complete
-and closed out -- see its "Status" section for the full arc, including
-what didn't pan out. What's left and actively maintained is the narrower,
-validated part: **the layer-placement optimizer and the agent built on
-top of it.** Every claim below is a real measurement on one real machine
-(RTX 5060, 8GB VRAM), not a benchmark suite or a general guarantee.
-Full experiment writeups, methodology, and honest negative results
-(including a corrected earlier conclusion) are in
+This started as a research project on tiered/remote memory for local
+LLM inference (`docs/ARCHITECTURE.md`, 10 phases, closed out early --
+see its own "Status" section for what didn't pan out). What exists now
+is a working app built on the narrower, validated part of that
+research: hardware-aware placement plus multi-agent scheduling,
+wrapped in a proxy server, a desktop GUI, and a CLI.
+
+**The technical build is done and internally validated. Customer
+discovery has not happened yet** -- see `PRODUCT_HYPOTHESES.md`'s
+closing section for the interview plan. If you're reading this because
+someone asked you to try it: that's the discovery step in progress,
+and unvarnished feedback (including "this is useless for what I
+actually do") is exactly what's being asked for.
+
+Every performance claim below is a real measurement on one real
+machine (RTX 5060, 8GB VRAM), independently verified where a task has
+a checkable outcome (git diff + pytest, not a model's self-report) --
+not a benchmark suite and not a general guarantee. Full experiment
+writeups, methodology, and honest negative results (several) are in
 `PRODUCT_HYPOTHESES.md`.
-
-This is a personal tool, not a product. No customer discovery has
-happened yet -- see `PRODUCT_HYPOTHESES.md`'s closing section for that
-plan if you're curious where this could go next.
-
-## Why
-
-Ollama's automatic layer placement is safe but leaves throughput on the
-table -- consistently 16-35% in this project's own measurements, across
-context lengths from 2048 to 12288 tokens (`results/expC_context_sweep*`).
-Push placement too far the other way, past the GPU's physical VRAM, and
-throughput doesn't degrade gracefully -- it can fall off a cliff to a
-fraction of baseline. That cliff is real but **not fully deterministic**:
-the same overflowing placement collapsed to 1.47 tok/s once and stayed
-smooth at 13.9 tok/s another time, depending on conditions outside what
-either tool can see in advance. So `ramer_local.py` doesn't just pick a
-placement once -- it also has to notice, at runtime, when a cached
-placement stops matching reality.
 
 ## Quick start
 
 Requires Python 3.10+, a local Ollama install, and a **discrete NVIDIA
-GPU** (`nvidia-smi` on PATH). Tested on Windows; the discrete-GPU
-assumption should hold on Linux too, but that's untested.
-
-**Not applicable to Apple Silicon Macs.** This tool optimizes the split
-between VRAM and system RAM across a PCIe bus -- a discrete-GPU problem.
-Unified memory (every M-series Mac) has no such split to optimize, and
-`nvidia-smi` doesn't exist there regardless. See `PRODUCT_HYPOTHESES.md`
-(H2) for why this matters for who this is actually useful to.
+GPU** (`nvidia-smi` on PATH). Built and tested on Windows; the
+discrete-GPU assumption should hold on Linux too, but that's untested.
+**Not applicable to Apple Silicon Macs** -- this optimizes the VRAM/RAM
+split across a PCIe bus, which unified memory doesn't have.
 
 ```bash
-# find and cache the fastest layer split for a model at your context window
-python scripts/ramer_local.py probe qwen2.5:14b-instruct --num-ctx 8192
+pip install -r app/requirements.txt
 
-# run at the cached (or auto-probed) optimal split
-python scripts/ramer_local.py run qwen2.5:14b-instruct "explain gradient descent"
-
-# see every cached placement, and the history of real runs (auto vs. Ramer tok/s)
-python scripts/ramer_local.py show-cache
-python scripts/ramer_local.py show-log
+# start the proxy -- an existing agent tool points here instead of at Ollama
+python -m app.cli serve --port 11435
 ```
+
+Then point your agent tool's Ollama (or OpenAI-compatible) base URL at
+`http://127.0.0.1:11435` instead of Ollama's own `11434`. That's the
+whole integration -- no code changes on the tool's side. Confirmed
+working end-to-end with `aider` and with the `pi` CLI, including real
+tool-calling agentic tasks, not just chat.
+
+Optional, if you want to see or force a specific model's placement
+before using it live:
 
 ```bash
-# a minimal coding agent, scoped to one working directory, using the
-# Ramer-optimized placement for that model/context automatically
-python scripts/mini_agent.py --workdir /path/to/your/project qwen2.5:14b-instruct \
-    "read the files here and tell me what this project does"
+python -m app.cli doctor                                    # hardware + Ollama status
+python -m app.cli benchmark qwen2.5:14b-instruct --num-ctx 8192
 ```
 
-**`--workdir` must point at a git repo with a clean working tree (commit
-first if it isn't).** Not a suggestion -- confirmed necessary the hard
-way: asked to modify three existing files on a real project, the local
-14B model instead overwrote all three with tiny stubs, silently
-discarding real working logic (a rule engine, a live API integration,
-most of a REST API's routes) while reporting success. `write_file` now
-refuses the most damaging shape of this (a large same-path shrink,
-`scripts/mini_agent.py`'s `tool_write_file`), but that's a narrower
-catch, not a guarantee -- a real git commit to revert to is what actually
-recovered that project in one command. See `PRODUCT_HYPOTHESES.md` for
-the full account.
+A desktop GUI also exists (`python -m app.gui.main`) covering the same
+setup flow plus a built-in coding agent, for anyone who'd rather not
+use the CLI.
+
+## Validated results
+
+Same methodology throughout: compare against Ollama's own default
+placement, then re-run on a real agentic task with the outcome checked
+independently, not by trusting the model's or the agent's own report.
+
+| model | Ollama auto | Ramer | gain |
+|---|---|---|---|
+| Qwen2.5-14B (Q4_K_M) | 12.4 tok/s | 19.6 tok/s | +61% |
+| Qwen2.5-32B (Q2_K, VRAM boundary case) | 3.1 tok/s | 3.3 tok/s | +6.7% |
+| Qwen3.8-27B (IQ2_XXS) | 5.9 tok/s | 29.6 tok/s | +402% |
+
+And on real end-to-end agent tasks through two different third-party
+tools (`aider`, `pi`), not synthetic benchmarks:
+
+| workload | with Ramer | without Ramer | takeaway |
+|---|---|---|---|
+| coding task, 14B | 55.4s, correct | 89.2s, correct | ~38% faster, same outcome |
+| coding task, 32B-Q2_K | fails | fails | placement can't rescue an inadequate model |
+| research task (web search + read), 14B | 19.8s median | 19.9s median | no benefit when network/tool latency dominates |
+
+**The honest, bounded thesis this points to**: Ramer's benefit is
+proportional to how much of a workload is actual local decoding. It's
+a real, repeated win for decode-heavy work (coding, long generations),
+negligible for short-answer/tool-latency-bound work, and it does not
+make an unreliable model reliable. That's the claim worth testing, not
+"Ramer makes local AI faster" in general -- see `PRODUCT_HYPOTHESES.md`
+for the full arc, including the two-page-long confusion about a
+warm-vs-cold-start artifact that was caught and corrected before being
+reported, and every other place a first result turned out to need a
+second look.
 
 ## How the placement is kept honest
 
 - **Context-aware**: a placement is only valid at the context window it
-  was measured at (the KV cache competes with model weights for the same
-  VRAM), so placements are probed and cached per `--num-ctx`, not just
-  per model.
+  was measured at (the KV cache competes with model weights for the
+  same VRAM), so placements are probed and cached per model *and*
+  context length.
 - **Headroom-aware**: among candidates that tie on throughput, the
   smallest VRAM footprint wins -- a placement that's 0.04 tok/s faster
   but has zero headroom is a worse bet than one with margin to spare.
-- **Self-healing**: every `run` does a cheap pre-flight throughput check
+- **Self-healing**: every run does a cheap pre-flight throughput check
   against the cached number; if it's regressed, that run falls back to
   Ollama's own safe auto-placement and the cache is flagged for a fresh
-  probe next time -- no permanent manual `--force` needed. A live
-  response is also watched for drift *during* generation, since a short
-  pre-flight check can't see a rate that only degrades partway through a
-  long response.
-- **Deliberately not built**: interrupting or reloading a model
-  *mid-generation* in response to detected drift. That's a bigger,
-  riskier intervention than anything here does today -- see
-  `PRODUCT_HYPOTHESES.md` for why it's parked, not forgotten.
+  probe next time.
+- **Scheduled, not just placed**: a single chokepoint (`RamerScheduler`)
+  handles priority ordering and sticky same-model residency across
+  concurrent agents, so switching between two agents on one GPU doesn't
+  thrash -- built after directly reproducing that failure mode
+  (Experiment D in `PRODUCT_HYPOTHESES.md`), not speculatively.
 
 ## What this doesn't do
 
-- **MoE expert-level placement.** Mixture-of-experts models (e.g.
-  Qwen3.6-35B-A3B) have a finer-grained placement lever -- keep shared
-  attention layers on GPU, route individual experts to CPU -- that
-  `llama.cpp` supports directly but Ollama's API doesn't expose. Confirmed
-  by direct measurement, not assumption; see `PRODUCT_HYPOTHESES.md`.
-  Would require driving a different backend, not tuning this tool harder.
-- **Anything beyond Ollama.** Both tools speak Ollama's REST API only.
+- **MoE expert-level placement.** Mixture-of-experts models have a
+  finer-grained placement lever (keep shared attention on GPU, route
+  individual experts to CPU) that `llama.cpp` supports directly but
+  Ollama's API doesn't expose. Confirmed by direct measurement; would
+  require driving a different backend, not tuning this tool harder.
+- **Rescue a model that's genuinely too large or too heavily quantized
+  for the task.** Placement optimizes what a model can already do; it
+  doesn't add capability. See the 32B-Q2_K rows above.
+- **Anything beyond Ollama as the actual inference engine.** The proxy
+  speaks Ollama's native API and the OpenAI-compatible chat API on top
+  of it, but Ollama itself still does the inference.
 
 ## Repo layout
 
-- `scripts/ramer_local.py`, `scripts/mini_agent.py` -- the two tools.
+- `app/` -- the maintained product: hardware detection, placement
+  engine, multi-agent scheduler, the Ollama/OpenAI-compatible proxy
+  server, a coding agent, a GUI, and a CLI. See `app/README.md` for the
+  full component breakdown and test coverage.
+- `scripts/ramer_local.py`, `scripts/mini_agent.py` -- the original,
+  lower-level research tools `app/` builds on. Still work standalone.
 - `PRODUCT_HYPOTHESES.md` -- every experiment, finding, correction, and
-  open question, in the order they actually happened.
-- `docs/ARCHITECTURE.md` -- the original 10-phase memory-tiering research
-  that preceded and motivated this narrower tool.
+  open question, in the order they actually happened. Read this before
+  trusting any specific number above out of context.
+- `docs/ARCHITECTURE.md` -- the original 10-phase memory-tiering
+  research that preceded and motivated everything here.
 - `results/` -- raw JSON/JSONL from the controlled experiments.
 - `src/` -- the original research prototype's code (memory-tiering
-  simulation harness); not part of the maintained tools above.
+  simulation harness); not part of the maintained product.
 
 ## License
 
