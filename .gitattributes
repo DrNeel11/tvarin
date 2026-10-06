@@ -1,0 +1,9 @@
+# Keep build outputs and images byte-exact; core.autocrlf would corrupt them.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.ico binary
+
+# Normalise text
+*.py text eol=lf
+*.md text eol=lf
