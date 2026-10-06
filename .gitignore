@@ -12,3 +12,6 @@ agent_sandbox/
 mini_agent_sessions.jsonl
 app_sessions.jsonl
 .claude-scratch/
+tools/leads.md
+tools/leads_smoketest.md
+tools/reddit_credentials.json
